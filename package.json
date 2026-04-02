@@ -1,0 +1,19 @@
+{
+  "name": "vector-control-hub",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "app",
+    "server"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace app",
+    "dev:app": "npm run dev --workspace app",
+    "dev:server": "npm run dev --workspace server",
+    "start": "powershell -ExecutionPolicy Bypass -File ./Launch-Vector-Control-Hub.ps1",
+    "build": "npm run build --workspace app && npm run build --workspace server",
+    "preview": "powershell -ExecutionPolicy Bypass -File ./Launch-Vector-Control-Hub.ps1 -NoOpen",
+    "typecheck": "npm run typecheck --workspace app && npm run typecheck --workspace server",
+    "lint": "npm run typecheck"
+  }
+}

@@ -1,0 +1,214 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 221 72% 5%;
+  --foreground: 210 40% 98%;
+  --card: 224 52% 11%;
+  --card-foreground: 210 40% 98%;
+  --border: 214 32% 24%;
+  --input: 216 32% 18%;
+  --primary: 178 88% 72%;
+  --primary-foreground: 221 72% 5%;
+  --secondary: 213 38% 18%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 219 33% 16%;
+  --muted-foreground: 216 20% 70%;
+  --accent: 20 93% 67%;
+  --accent-foreground: 221 72% 5%;
+  --destructive: 0 84% 64%;
+  --destructive-foreground: 210 40% 98%;
+  --ring: 178 88% 72%;
+  --success: 148 64% 52%;
+  --warning: 38 95% 63%;
+  --bg-glow-a: rgba(122, 248, 234, 0.16);
+  --bg-glow-b: rgba(255, 212, 90, 0.14);
+  --grid-line: rgba(255, 255, 255, 0.035);
+  --scrollbar-start: rgba(122, 248, 234, 0.5);
+  --scrollbar-end: rgba(255, 212, 90, 0.45);
+  --surface-soft: rgba(255, 255, 255, 0.04);
+  --surface-strong: rgba(255, 255, 255, 0.08);
+  --surface-ghost: rgba(255, 255, 255, 0.05);
+  --surface-black: rgba(0, 0, 0, 0.14);
+  --surface-border: rgba(126, 173, 211, 0.18);
+  --surface-border-strong: rgba(122, 248, 234, 0.32);
+  --panel-shadow: rgba(4, 22, 61, 0.35);
+  --panel-glow: rgba(122, 248, 234, 0.2);
+}
+
+.light {
+  --background: 220 33% 98%;
+  --foreground: 221 56% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 221 56% 11%;
+  --border: 216 21% 84%;
+  --input: 216 21% 90%;
+  --primary: 201 86% 40%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 215 40% 95%;
+  --secondary-foreground: 221 56% 11%;
+  --muted: 216 33% 94%;
+  --muted-foreground: 220 13% 42%;
+  --accent: 24 95% 57%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 210 40% 98%;
+  --ring: 201 86% 40%;
+  --success: 148 64% 39%;
+  --warning: 32 91% 48%;
+  --grid-line: rgba(7, 15, 33, 0.05);
+  --surface-soft: rgba(19, 35, 66, 0.05);
+  --surface-strong: rgba(19, 35, 66, 0.1);
+  --surface-ghost: rgba(19, 35, 66, 0.06);
+  --surface-black: rgba(19, 35, 66, 0.05);
+  --surface-border: rgba(62, 90, 131, 0.18);
+  --surface-border-strong: rgba(19, 145, 202, 0.26);
+  --panel-shadow: rgba(57, 76, 112, 0.16);
+  --panel-glow: rgba(19, 145, 202, 0.12);
+}
+
+.theme-vector {
+  --background: 221 64% 7%;
+  --card: 223 46% 12%;
+  --secondary: 215 37% 18%;
+  --muted: 220 31% 16%;
+  --border: 208 35% 24%;
+  --primary: 182 88% 72%;
+  --primary-foreground: 221 72% 5%;
+  --accent: 45 95% 64%;
+  --accent-foreground: 221 72% 5%;
+  --ring: 182 88% 72%;
+  --bg-glow-a: rgba(122, 248, 234, 0.16);
+  --bg-glow-b: rgba(255, 212, 90, 0.14);
+  --scrollbar-start: rgba(122, 248, 234, 0.5);
+  --scrollbar-end: rgba(255, 212, 90, 0.45);
+  --surface-soft: rgba(120, 233, 227, 0.055);
+  --surface-strong: rgba(255, 216, 102, 0.09);
+  --surface-ghost: rgba(255, 255, 255, 0.055);
+  --surface-black: rgba(3, 8, 18, 0.24);
+  --surface-border: rgba(125, 176, 219, 0.18);
+  --surface-border-strong: rgba(122, 248, 234, 0.34);
+  --panel-shadow: rgba(3, 14, 36, 0.42);
+  --panel-glow: rgba(122, 248, 234, 0.18);
+}
+
+.theme-midnight {
+  --background: 229 58% 7%;
+  --card: 230 42% 12%;
+  --secondary: 227 31% 18%;
+  --muted: 230 25% 16%;
+  --border: 222 30% 23%;
+  --primary: 194 100% 69%;
+  --primary-foreground: 221 72% 5%;
+  --accent: 21 92% 66%;
+  --accent-foreground: 221 72% 5%;
+  --ring: 194 100% 69%;
+  --bg-glow-a: rgba(101, 232, 255, 0.14);
+  --bg-glow-b: rgba(255, 156, 107, 0.14);
+  --scrollbar-start: rgba(101, 232, 255, 0.48);
+  --scrollbar-end: rgba(255, 156, 107, 0.42);
+  --surface-soft: rgba(101, 232, 255, 0.045);
+  --surface-strong: rgba(255, 156, 107, 0.1);
+  --surface-ghost: rgba(255, 255, 255, 0.05);
+  --surface-black: rgba(5, 8, 19, 0.24);
+  --surface-border: rgba(116, 143, 193, 0.18);
+  --surface-border-strong: rgba(101, 232, 255, 0.3);
+  --panel-shadow: rgba(9, 14, 34, 0.46);
+  --panel-glow: rgba(255, 156, 107, 0.16);
+}
+
+.theme-ice {
+  --background: 218 46% 9%;
+  --card: 218 30% 15%;
+  --secondary: 218 28% 19%;
+  --muted: 217 24% 17%;
+  --border: 214 24% 27%;
+  --primary: 191 100% 82%;
+  --primary-foreground: 222 64% 8%;
+  --accent: 221 90% 71%;
+  --accent-foreground: 210 40% 98%;
+  --ring: 191 100% 82%;
+  --bg-glow-a: rgba(164, 243, 255, 0.16);
+  --bg-glow-b: rgba(122, 166, 255, 0.12);
+  --scrollbar-start: rgba(164, 243, 255, 0.48);
+  --scrollbar-end: rgba(122, 166, 255, 0.42);
+  --surface-soft: rgba(164, 243, 255, 0.055);
+  --surface-strong: rgba(122, 166, 255, 0.1);
+  --surface-ghost: rgba(255, 255, 255, 0.05);
+  --surface-black: rgba(4, 10, 20, 0.22);
+  --surface-border: rgba(137, 163, 204, 0.2);
+  --surface-border-strong: rgba(164, 243, 255, 0.3);
+  --panel-shadow: rgba(10, 18, 36, 0.42);
+  --panel-glow: rgba(122, 166, 255, 0.18);
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+html {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, var(--bg-glow-a), transparent 34%),
+    radial-gradient(circle at top right, var(--bg-glow-b), transparent 28%),
+    hsl(var(--background));
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: hsl(var(--foreground));
+  font-family: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 72px 72px;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--scrollbar-start), var(--scrollbar-end));
+  border-radius: 999px;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    @apply outline-none;
+  }
+}
+
+@layer components {
+  .panel {
+    border: 1px solid var(--surface-border);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 70%, transparent), transparent 36%),
+      hsl(var(--card) / 0.88);
+    box-shadow:
+      0 0 0 1px var(--panel-glow),
+      0 18px 50px var(--panel-shadow);
+    @apply rounded-2xl backdrop-blur-xl;
+  }
+
+  .panel-grid {
+    @apply panel p-5 md:p-6;
+  }
+
+  .eyebrow {
+    @apply text-[0.68rem] font-semibold uppercase tracking-[0.32em] text-primary/85;
+  }
+}
