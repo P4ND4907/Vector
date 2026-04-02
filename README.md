@@ -1,8 +1,21 @@
 # Vector Control Hub
 
-Vector Control Hub is a local dashboard for the Anki / DDL Vector robot.
+![Status](https://img.shields.io/badge/status-active-66e3d2)
+![Local First](https://img.shields.io/badge/data-local--first-1d7f5f)
+![Platform](https://img.shields.io/badge/platform-Windows-4f8cff)
+![License](https://img.shields.io/badge/license-MIT-5cb85c)
+
+Vector Control Hub is a local-first dashboard for the Anki / DDL Vector robot.
 
 It exists to make Vector easier to use day-to-day: one app for connection, drive controls, speech, diagnostics, routines, AI command previews, and camera/photo tools, with WirePod staying in the background as the local bridge.
+
+## At A Glance
+
+- Built for normal users, not just script-heavy setups
+- Keeps robot control local on your machine
+- Uses WirePod as the backend bridge instead of replacing it
+- Includes Mock Mode so the app still works without a robot
+- Runs as a Windows-first local app with a one-click starter
 
 ## Project Status
 
@@ -40,21 +53,16 @@ This app is meant to reduce that friction. The goal is a single control center t
 
 Add these screenshots before a public post:
 
-1. Startup connection screen
-2. Main dashboard
-3. Controls page
-4. AI commands page
-5. Diagnostics page
-6. Camera/photo page
+| Screen | Suggested filename | Notes |
+| --- | --- | --- |
+| Startup connection | `docs/screenshots/startup-connect.png` | Show a calm ready-to-connect state |
+| Main dashboard | `docs/screenshots/dashboard-connected.png` | Use a clean connected robot state |
+| Controls | `docs/screenshots/controls-live.png` | Show large touch-friendly controls |
+| AI commands | `docs/screenshots/ai-commands.png` | Include preview and result feedback |
+| Diagnostics | `docs/screenshots/diagnostics.png` | Show honest health messaging |
+| Camera | `docs/screenshots/camera.png` | Use either synced photos or an empty state |
 
 Tip: use one clean connected state and one honest offline state.
-
-## Tech Stack
-
-- Frontend: React, TypeScript, Vite, Tailwind CSS, Zustand
-- Backend: Node.js, Express, Zod
-- Local bridge: WirePod
-- Packaging path: PWA-first, with Capacitor-ready frontend structure
 
 ## How It Works
 
@@ -68,7 +76,14 @@ Important:
 - This app is designed so WirePod stays mostly invisible after setup
 - The frontend does **not** talk directly to random local endpoints; the backend owns the WirePod communication layer
 
-## Privacy and Safety
+## Tech Stack
+
+- Frontend: React, TypeScript, Vite, Tailwind CSS, Zustand
+- Backend: Node.js, Express, Zod
+- Local bridge: WirePod
+- Packaging path: PWA-first, with Capacitor-ready frontend structure
+
+## Privacy And Safety
 
 By default, this project is local-first.
 
@@ -98,7 +113,7 @@ What you should never do:
 
 ## Quick Start
 
-### Easiest launch
+### Easiest Launch
 
 Use:
 
@@ -117,7 +132,7 @@ Both launchers call the same PowerShell script and do only visible, local startu
 - start the local static app server
 - open the app window
 
-### Manual install
+### Manual Install
 
 ```bash
 npm install
@@ -280,7 +295,7 @@ Check whether Vector is still on the charger. Some movement commands can appear 
 
 ### Camera page shows no photos
 
-Ask Vector to take a photo, then use the camera page action to capture/sync again.
+Ask Vector to take a photo, then use the camera page action to capture and sync again.
 
 ## FAQ
 
@@ -298,13 +313,13 @@ Not by default. Most robot control stays local. Optional OpenAI features require
 
 ### Is Mock Mode required?
 
-No. It is optional and should only be used when you want a fallback/demo path.
+No. It is optional and should only be used when you want a fallback or demo path.
 
 ## Known Limitations
 
 - Some advanced roam automation behavior is still being refined
-- Speech/audio behavior may vary depending on the local Vector/WirePod setup
-- Advanced vision/object detection is not finished yet
+- Speech and audio behavior may vary depending on the local Vector and WirePod setup
+- Advanced vision and object detection are not finished yet
 - This repo is currently Windows-first in its helper scripts
 
 ## Public Sharing Checklist

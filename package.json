@@ -1,7 +1,27 @@
 {
   "name": "vector-control-hub",
+  "description": "Local-first dashboard for controlling an Anki / DDL Vector robot through WirePod.",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
+  "homepage": "https://github.com/P4ND4907/Vector",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/P4ND4907/Vector.git"
+  },
+  "bugs": {
+    "url": "https://github.com/P4ND4907/Vector/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "vector",
+    "wirepod",
+    "robotics",
+    "react",
+    "local-first"
+  ],
   "workspaces": [
     "app",
     "server"
