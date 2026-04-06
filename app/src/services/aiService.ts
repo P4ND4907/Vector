@@ -1,7 +1,7 @@
 import { getJson, postJson } from "@/services/apiClient";
 import { mapAiCommandPreview, mapIntegration, mapRobot, type ServerIntegration, type ServerRobot } from "@/services/robotBackend";
 import { pauseTelemetry } from "@/services/robotService";
-import type { AiCommandPreview, Routine, Robot, IntegrationStatus } from "@/types";
+import type { AiCommandPreview, IntegrationStatus, Robot, Routine, VectorCommandCatalogItem } from "@/types";
 
 export interface AiRoutineDraft {
   name: string;
@@ -26,9 +26,25 @@ interface AiCommandExecuteResponse {
   integration?: ServerIntegration;
 }
 
+interface AiCommandCatalogResponse {
+  items: VectorCommandCatalogItem[];
+  counts: {
+    total: number;
+    live: number;
+    partial: number;
+  };
+}
+
 export const aiService = {
   async getStatus() {
     return getJson<AiStatusResponse>("/api/ai/status", "The AI status check failed.");
+  },
+
+  async getCommandCatalog() {
+    return getJson<AiCommandCatalogResponse>(
+      "/api/ai/commands/catalog",
+      "The command catalog could not be loaded."
+    );
   },
 
   async generateRoutineDraft(prompt: string) {

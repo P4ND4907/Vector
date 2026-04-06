@@ -7,6 +7,7 @@ import {
 import { executeAiCommand, previewAiCommand } from "../services/aiCommandService.js";
 import type { RobotController } from "../robot/types.js";
 import { buildOptionalModuleSnapshot, optionalModules } from "../services/optionalModules.js";
+import { getVectorCommandCatalog } from "../services/vectorCommandCatalog.js";
 
 const envSchema = z.object({
   openaiApiKey: z.string(),
@@ -193,6 +194,18 @@ export const createAiRouter = (controller: RobotController, rawEnv: unknown) => 
       enabled: Boolean(env.openaiApiKey),
       model: env.openaiModel,
       modules: buildOptionalModuleSnapshot(optionalModules, env).optionalModules
+    });
+  });
+
+  router.get("/commands/catalog", async (_request: Request, response: Response) => {
+    const items = getVectorCommandCatalog();
+    response.json({
+      items,
+      counts: {
+        total: items.length,
+        live: items.filter((item) => item.status === "live").length,
+        partial: items.filter((item) => item.status === "partial").length
+      }
     });
   });
 

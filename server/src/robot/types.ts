@@ -254,6 +254,34 @@ export interface ParsedAiCommand {
   actions: ParsedAiAction[];
 }
 
+export type VectorCommandCatalogCategory =
+  | "classic"
+  | "community"
+  | "control"
+  | "assistant";
+
+export type VectorCommandCatalogStatus = "live" | "partial";
+
+export type VectorCommandCatalogSurface =
+  | "face"
+  | "voice"
+  | "motion"
+  | "camera"
+  | "app"
+  | "memory";
+
+export interface VectorCommandCatalogItemRecord {
+  key: string;
+  title: string;
+  category: VectorCommandCatalogCategory;
+  status: VectorCommandCatalogStatus;
+  summary: string;
+  aliases: string[];
+  samplePrompt: string;
+  surfaces: VectorCommandCatalogSurface[];
+  note?: string;
+}
+
 export interface DiagnosticCheckRecord {
   id: string;
   label: string;

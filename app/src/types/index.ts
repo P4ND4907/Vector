@@ -374,6 +374,34 @@ export interface AiCommandHistoryItem {
   resultMessage: string;
 }
 
+export type VectorCommandCatalogCategory =
+  | "classic"
+  | "community"
+  | "control"
+  | "assistant";
+
+export type VectorCommandCatalogStatus = "live" | "partial";
+
+export type VectorCommandCatalogSurface =
+  | "face"
+  | "voice"
+  | "motion"
+  | "camera"
+  | "app"
+  | "memory";
+
+export interface VectorCommandCatalogItem {
+  key: string;
+  title: string;
+  category: VectorCommandCatalogCategory;
+  status: VectorCommandCatalogStatus;
+  summary: string;
+  aliases: string[];
+  samplePrompt: string;
+  surfaces: VectorCommandCatalogSurface[];
+  note?: string;
+}
+
 export interface ActionFeedback {
   status: ActionStatus;
   message?: string;

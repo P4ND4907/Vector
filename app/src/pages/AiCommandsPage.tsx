@@ -9,7 +9,7 @@ import { getChargingProtectionMessage, isChargingProtectionActive } from "@/lib/
 import { formatTimestamp } from "@/lib/format";
 import { getBrainStatusLabel } from "@/lib/robot-state";
 import { useAppStore } from "@/store/useAppStore";
-import type { AiCommandAction, AiCommandPreview, CommandLog, ToastItem } from "@/types";
+import type { AiCommandAction, AiCommandPreview, CommandLog, ToastItem, VectorCommandCatalogItem } from "@/types";
 
 const EXAMPLE_PROMPTS = [
   "say hello",
@@ -24,6 +24,24 @@ const EXAMPLE_PROMPTS = [
 ];
 
 const DEFAULT_MESSAGE = "Preview a plain-English instruction before you send it to Vector.";
+
+const CATEGORY_LABELS = {
+  classic: "Classic Vector",
+  community: "Community extras",
+  control: "Core controls",
+  assistant: "Assistant tools"
+} as const;
+
+const CATEGORY_ORDER = ["classic", "community", "control", "assistant"] as const;
+
+const SURFACE_LABELS = {
+  face: "Face",
+  voice: "Voice",
+  motion: "Motion",
+  camera: "Camera",
+  app: "App",
+  memory: "Memory"
+} as const;
 
 const normalizePrompt = (value: string) =>
   value
@@ -182,6 +200,9 @@ export function AiCommandsPage() {
   const [executing, setExecuting] = useState(false);
   const [aiStatus, setAiStatus] = useState<{ enabled: boolean; model: string } | null>(null);
   const [aiStatusNote, setAiStatusNote] = useState("Checking which command parser is available...");
+  const [commandCatalog, setCommandCatalog] = useState<VectorCommandCatalogItem[]>([]);
+  const [catalogCounts, setCatalogCounts] = useState({ total: 0, live: 0, partial: 0 });
+  const [catalogNote, setCatalogNote] = useState("Loading the shared command library...");
 
   const latestAiLogs = useMemo(() => aiCommandHistory.slice(0, 5), [aiCommandHistory]);
   const brainStatus = getBrainStatusLabel(integration);
@@ -194,6 +215,7 @@ export function AiCommandsPage() {
     : robot.isDocked
       ? "Vector is on the charger. Take it off the dock before asking for wheel movement."
       : null;
+  const catalogFilter = normalizePrompt(prompt);
 
   useEffect(() => {
     let cancelled = false;
@@ -225,6 +247,66 @@ export function AiCommandsPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void aiService
+      .getCommandCatalog()
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+
+        setCommandCatalog(response.items);
+        setCatalogCounts(response.counts);
+        setCatalogNote(
+          `Built from the shared command engine: ${response.counts.live} live, ${response.counts.partial} still being tuned.`
+        );
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        setCatalogNote("The command library could not be loaded right now, but typed and voice commands still use the same backend parser.");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filteredCatalog = useMemo(() => {
+    if (!catalogFilter) {
+      return commandCatalog;
+    }
+
+    return commandCatalog.filter((item) => {
+      const haystack = normalizePrompt(
+        [item.title, item.summary, item.samplePrompt, item.note ?? "", ...item.aliases].join(" ")
+      );
+      return haystack.includes(catalogFilter);
+    });
+  }, [catalogFilter, commandCatalog]);
+
+  const groupedCatalog = useMemo(
+    () =>
+      CATEGORY_ORDER.map((category) => ({
+        category,
+        label: CATEGORY_LABELS[category],
+        items: filteredCatalog
+          .filter((item) => item.category === category)
+          .sort((left, right) => {
+            if (left.status === right.status) {
+              return left.title.localeCompare(right.title);
+            }
+
+            return left.status === "live" ? -1 : 1;
+          })
+      })).filter((group) => group.items.length > 0),
+    [filteredCatalog]
+  );
 
   const requestPreview = async (nextPrompt: string) => {
     const nextPreview = await aiService.previewCommand(nextPrompt);
@@ -472,6 +554,103 @@ export function AiCommandsPage() {
               <span>Selected serial</span>
               <span className="text-right text-foreground">{integration.selectedSerial || robot.serial || "Not set"}</span>
             </div>
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+              <span>Live commands</span>
+              <span className="text-right text-foreground">{catalogCounts.live || "..."}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Command library</CardTitle>
+            <CardDescription>Pulling the best of classic, community, and app-ready commands into one view.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">{catalogNote}</p>
+
+            <div className="flex flex-wrap gap-2">
+              <Badge>{catalogCounts.total} total</Badge>
+              <Badge className="border-emerald-300/20 bg-emerald-300/10 text-emerald-100">
+                {catalogCounts.live} live
+              </Badge>
+              <Badge className="border-amber-300/20 bg-amber-300/10 text-amber-100">
+                {catalogCounts.partial} partial
+              </Badge>
+              {catalogFilter ? <Badge>Filtered by current prompt</Badge> : null}
+            </div>
+
+            {groupedCatalog.length ? (
+              <div className="max-h-[720px] space-y-4 overflow-y-auto pr-1">
+                {groupedCatalog.map((group) => (
+                  <div key={group.category} className="space-y-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+                      {group.label}
+                    </div>
+
+                    {group.items.map((item) => (
+                      <div key={item.key} className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="font-semibold">{item.title}</div>
+                            <p className="mt-2 text-sm text-muted-foreground">{item.summary}</p>
+                          </div>
+                          <Badge
+                            className={
+                              item.status === "live"
+                                ? "shrink-0 border-emerald-300/20 bg-emerald-300/10 text-emerald-100"
+                                : "shrink-0 border-amber-300/20 bg-amber-300/10 text-amber-100"
+                            }
+                          >
+                            {item.status === "live" ? "Live now" : "Needs tuning"}
+                          </Badge>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {item.surfaces.map((surface) => (
+                            <Badge key={`${item.key}-${surface}`}>{SURFACE_LABELS[surface]}</Badge>
+                          ))}
+                        </div>
+
+                        <div className="mt-3 text-xs text-muted-foreground">
+                          Try: <span className="text-foreground">{item.samplePrompt}</span>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {item.aliases.slice(0, 3).map((alias) => (
+                            <Badge key={`${item.key}-${alias}`}>{alias}</Badge>
+                          ))}
+                        </div>
+
+                        {item.note ? (
+                          <div className="mt-3 rounded-2xl border border-white/10 bg-black/10 px-3 py-2 text-xs text-muted-foreground">
+                            {item.note}
+                          </div>
+                        ) : null}
+
+                        <div className="mt-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setPrompt(item.samplePrompt);
+                              setPreview(null);
+                              setMessage(DEFAULT_MESSAGE);
+                            }}
+                          >
+                            Use sample
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-3xl border border-dashed border-white/10 p-6 text-sm text-muted-foreground">
+                No commands matched the current prompt yet. Try a broader phrase like weather, dice, dock, or hello.
+              </div>
+            )}
           </CardContent>
         </Card>
 
