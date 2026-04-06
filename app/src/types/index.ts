@@ -111,6 +111,12 @@ export interface WirePodSetupStatus {
   recommendedNextStep: string;
 }
 
+export interface MobileBackendTarget {
+  label: string;
+  url: string;
+  kind: "localhost" | "lan";
+}
+
 export interface IntegrationStatus {
   source: RobotConnectionSource;
   wirePodReachable: boolean;

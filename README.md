@@ -44,17 +44,24 @@ Phase roadmap:
 
 ## Mobile Direction
 
-The mobile path is now being prepared in the codebase.
+The mobile path now has a real Android shell foundation in the repo.
 
 - The UI is already responsive
+- The browser build now behaves like an installable PWA with an offline shell
 - Capacitor packages are already included in the app workspace
 - The frontend can now store a manual app-backend URL for a future phone shell
+- The Android project scaffold now lives in `app/android`
+- The Settings screen can show suggested LAN backend URLs from the current desktop machine
 
 The intended first mobile version is:
 
 `Phone UI -> LAN / desktop backend -> local WirePod -> Vector`
 
 That keeps the architecture honest while we prepare a real mobile app foundation first.
+
+For the current Android path, see:
+
+- [docs/MOBILE_ANDROID.md](./docs/MOBILE_ANDROID.md)
 
 ## Why This App Exists
 
@@ -112,7 +119,7 @@ Important:
 - Frontend: React, TypeScript, Vite, Tailwind CSS, Zustand
 - Backend: Node.js, Express, Zod
 - Local bridge: WirePod
-- Packaging path: PWA-first, with Capacitor-ready frontend structure
+- Packaging path: Electron on Windows, with Capacitor Android foundation in `app/android`
 
 ## Privacy And Safety
 
@@ -129,6 +136,7 @@ What stays local:
 What may go to an external API:
 
 - OpenAI routine drafting or AI assistance, **only if you add your own `OPENAI_API_KEY`**
+- Google AdSense ad delivery on the public hosted web/PWA version, **only if you add your own AdSense publisher and slot IDs**
 
 What you should never do:
 
@@ -168,6 +176,12 @@ Compatibility launcher:
 
 - `Launch-Vector-Control-Hub.bat`
 
+If you are using the browser build instead of the Windows installer:
+
+- open the app in a Chromium-based browser or Safari
+- use `Settings -> Installable web app`
+- install it to the home screen or desktop as a PWA
+
 Both launchers call the same PowerShell script and do only visible, local startup work:
 
 - verify Node.js is installed
@@ -197,6 +211,22 @@ That writes installer files to:
 dist-electron/
 ```
 
+### Android Shell Foundation
+
+To prepare the Android project after frontend changes:
+
+```bash
+npm run mobile:android:doctor
+npm run mobile:android:prepare
+npm run mobile:android:open
+```
+
+Important:
+
+- this currently packages the mobile UI shell
+- the backend and WirePod still run on a desktop or LAN machine
+- the phone app should point at a saved backend URL such as `http://192.168.x.x:8787`
+
 ## Environment Setup
 
 ### Frontend
@@ -208,6 +238,17 @@ Optional override file:
 This is only for hosted or unusual frontend setups.
 
 Normal local use does not require changing it.
+
+For hosted web monetization, the frontend can also read:
+
+- `VITE_ADSENSE_CLIENT`
+- `VITE_ADSENSE_SLOT`
+
+Important:
+
+- AdSense is only wired for the public browser/PWA version
+- it stays off on localhost, Electron, and the native mobile shell
+- you still need your site approved in AdSense before real ads will serve
 
 ### Backend
 

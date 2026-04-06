@@ -2,6 +2,7 @@ import { useEffect, useState, type ChangeEvent } from "react";
 import { BatteryCharging, Bot, Download, Globe, MessageSquareWarning, MoonStar, RotateCcw, Smartphone, SunMedium, Upload, Wrench } from "lucide-react";
 import { FeatureAvailabilityCard } from "@/components/settings/FeatureAvailabilityCard";
 import { OptionalModulesCard } from "@/components/settings/OptionalModulesCard";
+import { PwaInstallCard } from "@/components/settings/PwaInstallCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,7 +16,7 @@ import { getDefaultAppBackendUrl, isMobileShellLikeRuntime } from "@/lib/runtime
 import { robotService } from "@/services/robotService";
 import { themePresets } from "@/lib/themes";
 import { useAppStore } from "@/store/useAppStore";
-import type { WirePodWeatherConfig } from "@/types";
+import type { MobileBackendTarget, WirePodWeatherConfig } from "@/types";
 
 const downloadText = (filename: string, text: string) => {
   const blob = new Blob([text], { type: "application/json" });
@@ -49,6 +50,7 @@ export function SettingsPage() {
   const [problemSummary, setProblemSummary] = useState("");
   const [problemDetails, setProblemDetails] = useState("");
   const [contactEmail, setContactEmail] = useState("");
+  const [mobileBackendTargets, setMobileBackendTargets] = useState<MobileBackendTarget[]>([]);
   const [weatherConfig, setWeatherConfig] = useState<WirePodWeatherConfig>({
     enable: false,
     provider: "",
@@ -63,6 +65,27 @@ export function SettingsPage() {
     setAppBackendUrl(settings.appBackendUrl);
     setRobotSerial(settings.robotSerial);
   }, [settings.appBackendUrl, settings.customWirePodEndpoint, settings.robotSerial]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void robotService
+      .getMobileBackendTargets()
+      .then((targets) => {
+        if (!cancelled) {
+          setMobileBackendTargets(targets);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMobileBackendTargets([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -164,6 +187,33 @@ export function SettingsPage() {
                 onChange={(event) => setAppBackendUrl(event.target.value)}
               />
             </div>
+            <div className="mt-4 space-y-2">
+              <div className="text-sm text-muted-foreground">Suggested backend URLs from this computer</div>
+              {mobileBackendTargets.length ? (
+                <div className="grid gap-2">
+                  {mobileBackendTargets.map((target) => (
+                    <button
+                      key={target.url}
+                      type="button"
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-black)] px-4 py-3 text-left transition hover:border-primary/30"
+                      onClick={() => setAppBackendUrl(target.url)}
+                    >
+                      <div>
+                        <div className="text-sm font-semibold">{target.label}</div>
+                        <div className="mt-1 break-all text-xs text-muted-foreground">{target.url}</div>
+                      </div>
+                      <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                        {target.kind === "lan" ? "LAN" : "Local"}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-[var(--surface-border)] p-4 text-sm text-muted-foreground">
+                  No LAN backend suggestions are available yet. Start the desktop/backend stack on this machine first, then reopen Settings.
+                </div>
+              )}
+            </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <Button onClick={() => void updateSettings({ appBackendUrl })}>
                 <Globe className="h-4 w-4" />
@@ -179,6 +229,9 @@ export function SettingsPage() {
                 <RotateCcw className="h-4 w-4" />
                 Use desktop default
               </Button>
+            </div>
+            <div className="mt-3 text-xs text-muted-foreground">
+              For Android testing, keep your phone and desktop on the same Wi-Fi, then save one of the LAN URLs above in the mobile app.
             </div>
           </div>
 
@@ -465,6 +518,8 @@ export function SettingsPage() {
       </Card>
 
       <div className="grid gap-4">
+        <PwaInstallCard />
+
         <FeatureAvailabilityCard
           optionalFeatureList={optionalFeatureList}
           featureFlags={featureFlags}

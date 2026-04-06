@@ -9,7 +9,13 @@
     "preview": "npm run build && node ../scripts/serve-static-app.mjs --root dist --host 127.0.0.1 --port 4173",
     "typecheck": "tsc --noEmit",
     "lint": "npm run typecheck",
-    "mobile:sync": "cap sync"
+    "mobile:sync": "cap sync android",
+    "mobile:prepare:android": "npm run build && cap sync android",
+    "mobile:open:android": "cap open android",
+    "mobile:doctor:android": "node ../scripts/check-android-env.mjs",
+    "mobile:debug:android": "node ../scripts/run-android-gradle.mjs assembleDebug",
+    "mobile:release:android": "node ../scripts/run-android-gradle.mjs assembleRelease",
+    "mobile:bundle:android": "node ../scripts/run-android-gradle.mjs bundleRelease"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",

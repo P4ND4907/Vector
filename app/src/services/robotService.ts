@@ -43,6 +43,7 @@ import type {
   DiagnosticReport,
   DiagnosticsSnapshot,
   IntegrationStatus,
+  MobileBackendTarget,
   PairRobotInput,
   RepairResult,
   Robot,
@@ -72,6 +73,10 @@ interface WirePodWeatherApiResponse {
 
 interface WirePodSetupApiResponse {
   setup: WirePodSetupStatus;
+}
+
+interface MobileBackendTargetsApiResponse {
+  targets: MobileBackendTarget[];
 }
 
 interface StatusApiResponse {
@@ -1187,6 +1192,18 @@ export const robotService = {
       };
       return response.setup;
     });
+  },
+
+  async getMobileBackendTargets(): Promise<MobileBackendTarget[]> {
+    try {
+      const response = await getJson<MobileBackendTargetsApiResponse>(
+        "/api/settings/mobile-targets",
+        "Mobile backend suggestions are unavailable."
+      );
+      return response.targets;
+    } catch {
+      return [];
+    }
   },
 
   async startRoam(robot: Robot, automation: Parameters<typeof mockRobotService.startRoam>[1], existingCount: number) {

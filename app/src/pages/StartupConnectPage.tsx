@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Search,
   ShieldAlert,
+  Smartphone,
   Sparkles,
   Wifi
 } from "lucide-react";
@@ -19,6 +20,7 @@ import { StartupOverviewCard } from "@/components/startup/StartupOverviewCard";
 import { StartupSetupCard } from "@/components/startup/StartupSetupCard";
 import { formatRelativeTime } from "@/lib/format";
 import { getBatteryState, getBrainStatusLabel, getSystemStatusDisplay } from "@/lib/robot-state";
+import { isMobileShellLikeRuntime } from "@/lib/runtime-target";
 import { buildStartupGuide } from "@/lib/startup-onboarding";
 import { robotService } from "@/services/robotService";
 import { useAppStore } from "@/store/useAppStore";
@@ -27,6 +29,7 @@ import type { WirePodSetupStatus } from "@/types";
 const stageSurfaceTone = {
   connected: "border-emerald-400/20 bg-emerald-400/8",
   mock: "border-amber-300/20 bg-amber-300/8",
+  "mobile-backend-needed": "border-sky-400/20 bg-sky-400/8",
   "wirepod-setup": "border-sky-400/20 bg-sky-400/8",
   "wirepod-missing": "border-red-400/20 bg-red-400/8",
   "needs-target": "border-sky-400/20 bg-sky-400/8",
@@ -56,6 +59,8 @@ export function StartupConnectPage() {
   const brainStatus = getBrainStatusLabel(integration);
   const savedTarget = savedProfiles[0];
   const isConnected = robot.isConnected && integration.robotReachable;
+  const mobileRuntimeNeedsBackend =
+    isMobileShellLikeRuntime() && settings.appBackendUrl.trim().length === 0;
 
   const guide = useMemo(
     () =>
@@ -65,9 +70,10 @@ export function StartupConnectPage() {
         settings,
         savedProfile: savedTarget,
         availableRobots,
-        wirePodSetup
+        wirePodSetup,
+        mobileRuntimeNeedsBackend
       }),
-    [availableRobots, integration, robot, savedTarget, settings, wirePodSetup]
+    [availableRobots, integration, mobileRuntimeNeedsBackend, robot, savedTarget, settings, wirePodSetup]
   );
 
   const topCandidates = useMemo(() => availableRobots.slice(0, 3), [availableRobots]);
@@ -138,6 +144,11 @@ export function StartupConnectPage() {
   };
 
   const handlePrimary = async () => {
+    if (guide.stage === "mobile-backend-needed") {
+      navigate("/settings");
+      return;
+    }
+
     if (isConnected) {
       navigate("/dashboard");
       return;
@@ -218,6 +229,19 @@ export function StartupConnectPage() {
                     <ArrowRight className="h-4 w-4" />
                     Open demo dashboard
                   </Button>
+                </>
+              ) : guide.stage === "mobile-backend-needed" ? (
+                <>
+                  <Button size="lg" onClick={handlePrimary}>
+                    <Smartphone className="h-4 w-4" />
+                    Set backend URL
+                  </Button>
+                  {guide.showDemoOption ? (
+                    <Button variant="ghost" size="lg" onClick={handleEnableMock}>
+                      <Sparkles className="h-4 w-4" />
+                      Try demo mode
+                    </Button>
+                  ) : null}
                 </>
               ) : (
                 <>
@@ -303,6 +327,7 @@ export function StartupConnectPage() {
             setup={wirePodSetup}
             wirePodReachable={integration.wirePodReachable}
             mockMode={settings.mockMode}
+            mobileRuntimeNeedsBackend={mobileRuntimeNeedsBackend}
             loading={setupLoading}
             onFinishSetup={() => void handleFinishLocalSetup()}
             onOpenPairingPortal={handleOpenRobotPairingPortal}

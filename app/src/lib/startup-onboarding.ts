@@ -10,6 +10,7 @@ import type {
 export type StartupStage =
   | "connected"
   | "mock"
+  | "mobile-backend-needed"
   | "wirepod-setup"
   | "wirepod-missing"
   | "needs-target"
@@ -47,7 +48,8 @@ export const buildStartupGuide = ({
   settings,
   savedProfile,
   availableRobots,
-  wirePodSetup
+  wirePodSetup,
+  mobileRuntimeNeedsBackend = false
 }: {
   robot: Robot;
   integration: IntegrationStatus;
@@ -55,6 +57,7 @@ export const buildStartupGuide = ({
   savedProfile?: RobotProfile;
   availableRobots: PairingCandidate[];
   wirePodSetup?: WirePodSetupStatus | null;
+  mobileRuntimeNeedsBackend?: boolean;
 }): StartupGuide => {
   const isConnected = robot.isConnected && integration.robotReachable;
   const hasTarget = hasSavedTarget(settings, integration, savedProfile);
@@ -118,6 +121,33 @@ export const buildStartupGuide = ({
       checklist,
       firstRunSteps,
       showDemoOption: false,
+      showQuickRepair: false
+    };
+  }
+
+  if (mobileRuntimeNeedsBackend) {
+    return {
+      stage: "mobile-backend-needed",
+      headline: "Point the mobile app at your desktop backend.",
+      description:
+        "This phone shell is ready, but it still needs the desktop or LAN backend URL before it can reach WirePod or your robot.",
+      nextTitle: "Open Settings and save the backend URL first.",
+      nextDetail:
+        "Use a LAN address like http://192.168.x.x:8787 while your phone and desktop are on the same Wi-Fi. After that, this screen can reconnect normally.",
+      modeLabel: "Mobile shell mode",
+      modeDetail:
+        "The phone UI is running locally on your device. The Node backend and WirePod still live on your desktop or another LAN machine for now.",
+      dependencyLabel: "Missing step: mobile backend URL",
+      dependencyDetail:
+        "Without a saved backend target, the mobile shell only knows its own WebView and cannot reach the desktop service that talks to Vector.",
+      checklist,
+      firstRunSteps: [
+        "On your desktop, keep Vector Control Hub or the backend running on the same Wi-Fi network as your phone.",
+        "Open Settings here and save a backend URL like http://192.168.x.x:8787.",
+        "Return to this screen and press Connect once the backend target is saved.",
+        "If you only want a quick tour first, switch into demo mode."
+      ],
+      showDemoOption: true,
       showQuickRepair: false
     };
   }

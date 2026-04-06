@@ -7,6 +7,7 @@ interface StartupSetupCardProps {
   setup?: WirePodSetupStatus | null;
   wirePodReachable: boolean;
   mockMode: boolean;
+  mobileRuntimeNeedsBackend?: boolean;
   loading: boolean;
   onFinishSetup: () => void;
   onOpenPairingPortal: () => void;
@@ -16,6 +17,7 @@ export function StartupSetupCard({
   setup,
   wirePodReachable,
   mockMode,
+  mobileRuntimeNeedsBackend = false,
   loading,
   onFinishSetup,
   onOpenPairingPortal
@@ -70,6 +72,11 @@ export function StartupSetupCard({
         <div className="rounded-2xl border border-dashed border-white/10 p-4 text-sm text-muted-foreground">
           {pairingHint}
         </div>
+        {mobileRuntimeNeedsBackend ? (
+          <div className="rounded-2xl border border-dashed border-sky-400/20 bg-sky-400/6 p-4 text-sm text-muted-foreground">
+            On phones, save the desktop backend URL first in Settings. The pairing portal and local setup buttons only start working after the mobile shell can reach your LAN backend.
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

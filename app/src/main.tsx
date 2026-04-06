@@ -12,14 +12,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   </React.StrictMode>
 );
 
-if (
-  "serviceWorker" in navigator &&
-  window.location.hostname !== "127.0.0.1" &&
-  window.location.hostname !== "localhost"
-) {
+if ("serviceWorker" in navigator && (window.isSecureContext || window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/sw.js").catch(() => {
-      // Keep registration failures quiet in mock mode.
+      // Keep registration failures quiet so local robot control still works.
     });
   });
 }

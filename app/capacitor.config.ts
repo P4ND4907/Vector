@@ -5,7 +5,8 @@ const config: CapacitorConfig = {
   appName: "Vector Control Hub",
   webDir: "dist",
   server: {
-    androidScheme: "https"
+    androidScheme: "https",
+    cleartext: true
   }
 };
 

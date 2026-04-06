@@ -1,5 +1,6 @@
 import { Suspense, lazy, useMemo } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
+import { AdSenseBanner } from "@/components/ads/AdSenseBanner";
 import { DesktopSidebarPanels, PinnedStatusCard, ToastRail } from "@/components/layout/app-shell-chrome";
 import { DesktopNav, MobileNav } from "@/components/layout/app-shell-nav";
 import { StartupConnectPage } from "@/pages/StartupConnectPage";
@@ -114,6 +115,8 @@ export function AppShell() {
           <DesktopSidebarPanels unreadNotifications={unreadNotifications} recentLogs={recentLogs} />
         </aside>
       </div>
+
+      <AdSenseBanner />
 
       <MobileNav />
 

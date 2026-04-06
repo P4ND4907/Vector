@@ -19,3 +19,6 @@ dist-electron
 build-resources/icons
 yarn.lock
 pnpm-lock.yaml
+app/android/keystore.properties
+app/android/*.jks
+app/android/*.keystore

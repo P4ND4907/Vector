@@ -175,6 +175,48 @@ body {
   min-height: 100vh;
 }
 
+.vector-adsense-shell {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.vector-adsense-frame {
+  pointer-events: auto;
+  margin: 0 auto;
+  max-width: 960px;
+  border: 1px solid var(--surface-border);
+  border-radius: 18px;
+  background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-soft) 82%, transparent),
+      color-mix(in srgb, var(--surface-black) 86%, transparent)
+    ),
+    hsl(var(--card) / 0.92);
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.28),
+    0 0 0 1px var(--panel-glow);
+  backdrop-filter: blur(18px);
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+}
+
+.vector-adsense-unit {
+  display: block;
+  width: 100%;
+  min-height: 56px;
+}
+
+@media (max-width: 768px) {
+  .vector-adsense-shell {
+    bottom: 78px;
+  }
+
+  .vector-adsense-frame {
+    border-radius: 16px;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 12px;
 }
