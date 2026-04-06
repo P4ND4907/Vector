@@ -130,6 +130,8 @@ interface RobotEnvelope {
 let telemetryPausedUntil = 0;
 const AUTO_RECONNECT_COOLDOWN_MS = 15_000;
 const WIREPOD_SETUP_CACHE_MS = 4_000;
+const SUPPORT_ACTION_TIMEOUT_MS = 30_000;
+const WIREPOD_SETUP_TIMEOUT_MS = 20_000;
 const MIN_POLLING_INTERVAL_MS = 1_000;
 const FAST_DOCKED_POLLING_INTERVAL_MS = 1_500;
 let wirePodSetupCache: { value: WirePodSetupStatus; expiresAt: number } | null = null;
@@ -288,8 +290,12 @@ const buildBootstrapSnapshot = (fallback: AppSnapshot, response: ServerBootstrap
   };
 };
 
-const connectPayload = (robot: Robot) => ({
-  serial: robot.serial,
+const connectPayload = (
+  robot: Robot,
+  settings?: AppSettings,
+  integration?: IntegrationStatus
+) => ({
+  serial: robot.serial || settings?.robotSerial || integration?.selectedSerial,
   name: robot.nickname || robot.name,
   nickname: robot.nickname,
   ipAddress: robot.ipAddress,
@@ -499,12 +505,16 @@ export const robotService = {
     );
   },
 
-  async connect(robot: Robot, integration: IntegrationStatus): Promise<RobotCommandResult<RobotEnvelope>> {
+  async connect(
+    robot: Robot,
+    integration: IntegrationStatus,
+    settings?: AppSettings
+  ): Promise<RobotCommandResult<RobotEnvelope>> {
     return useApiOrFallback(
       async () => {
         const response = await postJson<StatusApiResponse>(
           "/api/robot/connect",
-          connectPayload(robot),
+          connectPayload(robot, settings, integration),
           "Robot connection failed."
         );
         const data = mapRobotEnvelope(response, robot, integration);
@@ -1059,7 +1069,8 @@ export const robotService = {
         const response = await postJson<VoiceRepairApiResponse>(
           "/api/diagnostics/voice/repair",
           undefined,
-          "Voice setup repair failed."
+          "Voice setup repair failed.",
+          { timeoutMs: SUPPORT_ACTION_TIMEOUT_MS }
         );
         return mapActionResult(response, fallback.robot, fallback.integration);
       },
@@ -1083,7 +1094,8 @@ export const robotService = {
         const response = await postJson<QuickRepairApiResponse>(
           "/api/support/repair",
           undefined,
-          "Quick repair failed."
+          "Quick repair failed.",
+          { timeoutMs: SUPPORT_ACTION_TIMEOUT_MS }
         );
         return {
           ok: true,
@@ -1292,7 +1304,8 @@ export const robotService = {
     return postJson<WirePodSetupApiResponse>(
       "/api/settings/wirepod/setup",
       payload ?? {},
-      "WirePod setup could not be completed."
+      "WirePod setup could not be completed.",
+      { timeoutMs: WIREPOD_SETUP_TIMEOUT_MS }
     ).then((response) => {
       wirePodSetupCache = {
         value: response.setup,

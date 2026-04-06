@@ -1,5 +1,5 @@
 import { robotService } from "@/services/robotService";
-import type { CameraSnapshot } from "@/types";
+import type { CameraSnapshot, PairingCandidate } from "@/types";
 
 import type { AppState, AppStoreGet, AppStoreSet } from "./app-store-types";
 import {
@@ -13,6 +13,72 @@ import {
   runAction
 } from "./app-store-utils";
 
+const toTrimmedSerial = (value: string | undefined) => value?.trim();
+
+const findSerialFromCandidates = (state: AppState, candidates: PairingCandidate[]) => {
+  if (toTrimmedSerial(state.settings.robotSerial)) {
+    return undefined;
+  }
+
+  const discoveredSerials = candidates
+    .map((candidate) => toTrimmedSerial(candidate.serial))
+    .filter((serial): serial is string => Boolean(serial));
+
+  if (!discoveredSerials.length) {
+    return undefined;
+  }
+
+  const savedSerial = state.savedProfiles
+    .map((profile) => toTrimmedSerial(profile.serial))
+    .find(Boolean) as string | undefined;
+
+  if (savedSerial && discoveredSerials.includes(savedSerial)) {
+    return savedSerial;
+  }
+
+  if (state.integration.selectedSerial) {
+    const selected = toTrimmedSerial(state.integration.selectedSerial);
+    if (selected && discoveredSerials.includes(selected)) {
+      return selected;
+    }
+  }
+
+  if (state.robot.serial) {
+    const current = toTrimmedSerial(state.robot.serial);
+    if (current && discoveredSerials.includes(current) && current !== "vector-local") {
+      return current;
+    }
+  }
+
+  if (discoveredSerials.length === 1) {
+    return discoveredSerials[0];
+  }
+
+  return undefined;
+};
+
+const findCandidateBySerial = (candidates: PairingCandidate[], serial: string) =>
+  candidates.find((candidate) => toTrimmedSerial(candidate.serial) === serial);
+
+const buildRobotWithAutoSerial = (
+  state: AppState,
+  serial: string
+): { robotSerial: string; robot: AppState["robot"] } => {
+  const serialCandidate = findCandidateBySerial(state.availableRobots, serial);
+  const robotHasValidSerial = Boolean(toTrimmedSerial(state.robot.serial));
+
+  return {
+    robotSerial: serial,
+    robot: robotHasValidSerial
+      ? state.robot
+      : {
+          ...state.robot,
+          serial,
+          ipAddress: serialCandidate?.ipAddress || state.robot.ipAddress
+        }
+  };
+};
+
 const mergeSnapshotWithPersistedUi = (freshState: AppState, persistedState: AppState) => {
   const merged = mergePersistedState(freshState, persistedState);
 
@@ -23,6 +89,9 @@ const mergeSnapshotWithPersistedUi = (freshState: AppState, persistedState: AppS
     settings: {
       ...merged.settings,
       ...freshState.settings,
+      theme: merged.settings.theme,
+      colorTheme: merged.settings.colorTheme,
+      appBackendUrl: merged.settings.appBackendUrl,
       robotNickname: freshState.settings.robotNickname || merged.settings.robotNickname
     },
     savedProfiles: freshState.savedProfiles.length ? freshState.savedProfiles : merged.savedProfiles,
@@ -95,17 +164,28 @@ export const createRobotActions = (
         },
         existingState
       );
+      const autoRobotSerial = findSerialFromCandidates(mergedState, mergedState.availableRobots);
+      const nextState = autoRobotSerial
+        ? (() => {
+            const { robotSerial, robot } = buildRobotWithAutoSerial(mergedState, autoRobotSerial);
+            return {
+              ...mergedState,
+              robot,
+              settings: {
+                ...mergedState.settings,
+                robotSerial
+              }
+            };
+          })()
+        : mergedState;
 
       set(() => ({
-        ...mergedState,
+        ...nextState,
         initialized: true,
         telemetryActive: true,
         robot: {
-          ...mergedState.robot,
-          nickname:
-            mergedState.settings.robotNickname ||
-            mergedState.robot.nickname ||
-            mergedState.robot.name
+          ...nextState.robot,
+          nickname: nextState.settings.robotNickname || nextState.robot.nickname || nextState.robot.name
         }
       }));
 
@@ -127,15 +207,33 @@ export const createRobotActions = (
   scanForRobots: async () => {
     await runAction("scan", set, async () => {
       const result = await robotService.scanNetwork();
+      const autoRobotSerial = findSerialFromCandidates(get(), result.robots);
+
+      const nextSettings = autoRobotSerial ? { ...get().settings, robotSerial: autoRobotSerial } : get().settings;
+      const nextRobot = autoRobotSerial ? buildRobotWithAutoSerial(get(), autoRobotSerial).robot : get().robot;
+
       set((state) => ({
         availableRobots: result.robots,
+        robot: autoRobotSerial ? nextRobot : state.robot,
+        settings: autoRobotSerial ? nextSettings : state.settings,
         integration: result.integration,
         logs: [
-          appendLog("scan", { count: result.robots.length }, "success", "Local robot scan complete."),
+          appendLog(
+            "scan",
+            { count: result.robots.length, autoSelectedSerial: autoRobotSerial ?? null },
+            "success",
+            autoRobotSerial ? "Local robot scan complete and serial auto-selected." : "Local robot scan complete."
+          ),
           ...state.logs
         ].slice(0, 60),
         toasts: [
-          appendToast("Scan complete", `Found ${result.robots.length} nearby robot profiles.`, "success"),
+          appendToast(
+            "Scan complete",
+            autoRobotSerial
+              ? `Found ${result.robots.length} nearby robot profiles. Auto-selected ${autoRobotSerial}.`
+              : `Found ${result.robots.length} nearby robot profiles.`,
+            "success"
+          ),
           ...state.toasts
         ].slice(0, 5)
       }));
@@ -182,7 +280,15 @@ export const createRobotActions = (
   connectRobot: async () => {
     await runAction("connect", set, async () => {
       const state = get();
-      const result = await robotService.connect(state.robot, state.integration);
+      const resolvedSerial = toTrimmedSerial(
+        state.robot.serial || state.settings.robotSerial || state.integration.selectedSerial
+      );
+      const robot = resolvedSerial
+        ? { ...state.robot, serial: state.robot.serial || resolvedSerial }
+        : state.robot;
+      const shouldPersistSerial = Boolean(resolvedSerial && resolvedSerial !== toTrimmedSerial(state.settings.robotSerial));
+
+      const result = await robotService.connect(robot, state.integration, state.settings);
       if (!result.data) {
         throw new Error("Robot did not return connection details.");
       }
@@ -196,6 +302,12 @@ export const createRobotActions = (
             data.robot.nickname ||
             data.robot.name
         },
+        settings: shouldPersistSerial
+          ? {
+              ...current.settings,
+              robotSerial: resolvedSerial || current.settings.robotSerial
+            }
+          : current.settings,
         integration: data.integration,
         logs: [
           appendLog(
