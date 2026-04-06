@@ -1,4 +1,10 @@
 import { getJson, postJson } from "@/services/apiClient";
+import {
+  executeMockCommand,
+  getMockAiStatus,
+  getMockCommandCatalog,
+  previewMockCommand
+} from "@/services/mockAiService";
 import { mapAiCommandPreview, mapIntegration, mapRobot, type ServerIntegration, type ServerRobot } from "@/services/robotBackend";
 import { pauseTelemetry } from "@/services/robotService";
 import type { AiCommandPreview, IntegrationStatus, Robot, Routine, VectorCommandCatalogItem } from "@/types";
@@ -35,16 +41,48 @@ interface AiCommandCatalogResponse {
   };
 }
 
+const isPersistedMockModeEnabled = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    const raw = window.localStorage.getItem("vector-control-hub-store");
+    if (!raw) {
+      return false;
+    }
+
+    const parsed = JSON.parse(raw) as { state?: { settings?: { mockMode?: boolean } } };
+    return Boolean(parsed.state?.settings?.mockMode);
+  } catch {
+    return false;
+  }
+};
+
 export const aiService = {
   async getStatus() {
-    return getJson<AiStatusResponse>("/api/ai/status", "The AI status check failed.");
+    try {
+      return await getJson<AiStatusResponse>("/api/ai/status", "The AI status check failed.");
+    } catch (error) {
+      if (!isPersistedMockModeEnabled()) {
+        throw error;
+      }
+      return getMockAiStatus();
+    }
   },
 
   async getCommandCatalog() {
-    return getJson<AiCommandCatalogResponse>(
-      "/api/ai/commands/catalog",
-      "The command catalog could not be loaded."
-    );
+    try {
+      return await getJson<AiCommandCatalogResponse>(
+        "/api/ai/commands/catalog",
+        "The command catalog could not be loaded."
+      );
+    } catch (error) {
+      if (!isPersistedMockModeEnabled()) {
+        throw error;
+      }
+      return getMockCommandCatalog();
+    }
   },
 
   async generateRoutineDraft(prompt: string) {
@@ -56,12 +94,19 @@ export const aiService = {
   },
 
   async previewCommand(prompt: string) {
-    const response = await postJson<{ parsed: AiCommandPreview }>(
-      "/api/ai/commands/preview",
-      { prompt },
-      "The AI command preview failed."
-    );
-    return mapAiCommandPreview(response.parsed);
+    try {
+      const response = await postJson<{ parsed: AiCommandPreview }>(
+        "/api/ai/commands/preview",
+        { prompt },
+        "The AI command preview failed."
+      );
+      return mapAiCommandPreview(response.parsed);
+    } catch (error) {
+      if (!isPersistedMockModeEnabled()) {
+        throw error;
+      }
+      return previewMockCommand(prompt);
+    }
   },
 
   async executeCommand(
@@ -70,19 +115,26 @@ export const aiService = {
     fallbackIntegration: IntegrationStatus
   ) {
     pauseTelemetry(12_000);
-    const response = await postJson<AiCommandExecuteResponse>(
-      "/api/ai/commands/execute",
-      { prompt },
-      "The AI command execution failed."
-    );
+    try {
+      const response = await postJson<AiCommandExecuteResponse>(
+        "/api/ai/commands/execute",
+        { prompt },
+        "The AI command execution failed."
+      );
 
-    return {
-      parsed: mapAiCommandPreview(response.parsed),
-      resultMessage: response.resultMessage,
-      robot: mapRobot(response.robot, fallbackRobot),
-      integration: response.integration
-        ? mapIntegration(response.integration, fallbackIntegration)
-        : fallbackIntegration
-    };
+      return {
+        parsed: mapAiCommandPreview(response.parsed),
+        resultMessage: response.resultMessage,
+        robot: mapRobot(response.robot, fallbackRobot),
+        integration: response.integration
+          ? mapIntegration(response.integration, fallbackIntegration)
+          : fallbackIntegration
+      };
+    } catch (error) {
+      if (!isPersistedMockModeEnabled()) {
+        throw error;
+      }
+      return executeMockCommand(prompt, fallbackRobot, fallbackIntegration);
+    }
   }
 };

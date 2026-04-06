@@ -210,6 +210,9 @@ export function AiCommandsPage() {
   const previewIsFresh = preview ? normalizePrompt(preview.prompt) === normalizePrompt(prompt) : false;
   const showMessageAsError = !preview && message !== DEFAULT_MESSAGE && !previewing && !executing;
   const chargingProtectionActive = isChargingProtectionActive(settings, robot);
+  const mockAiNote = settings.mockMode || integration.mockMode
+    ? "Mock mode is active, so AI previews and demo commands stay local until you save a real backend target."
+    : null;
   const dockNote = chargingProtectionActive
     ? getChargingProtectionMessage()
     : robot.isDocked
@@ -416,6 +419,12 @@ export function AiCommandsPage() {
             </div>
 
             <p className="text-sm text-muted-foreground">{aiStatusNote}</p>
+
+            {mockAiNote ? (
+              <div className="rounded-3xl border border-sky-300/18 bg-sky-300/8 p-4 text-sm text-sky-50/90">
+                {mockAiNote}
+              </div>
+            ) : null}
 
             {dockNote ? (
               <div className="rounded-3xl border border-amber-300/18 bg-amber-300/8 p-4 text-sm text-amber-50/90">

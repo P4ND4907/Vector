@@ -7,7 +7,10 @@ import {
   patchJson,
   postJson
 } from "@/services/apiClient";
-import { persistAppBackendUrl } from "@/lib/runtime-target";
+import {
+  mobileRuntimeNeedsManualBackendUrl,
+  persistAppBackendUrl
+} from "@/lib/runtime-target";
 import {
   buildProfile,
   mapCameraSnapshot,
@@ -189,6 +192,22 @@ const shouldAttemptReconnect = (
 };
 
 const shouldUseFallback = (error: unknown) => isNetworkError(error);
+
+const shouldApplyMobileLocalOnlySettings = (patch: Partial<AppSettings>) => {
+  if (!mobileRuntimeNeedsManualBackendUrl()) {
+    return false;
+  }
+
+  const localOnlyKeys: Array<keyof AppSettings> = [
+    "appBackendUrl",
+    "mockMode",
+    "theme",
+    "colorTheme"
+  ];
+
+  const patchKeys = Object.keys(patch) as Array<keyof AppSettings>;
+  return patchKeys.length > 0 && patchKeys.every((key) => localOnlyKeys.includes(key));
+};
 
 const getStoredMockMode = () => {
   if (typeof window === "undefined") {
@@ -1107,7 +1126,7 @@ export const robotService = {
 
     const backendPatchHasValues = Object.values(backendPatch).some((value) => value !== undefined);
 
-    if (!backendPatchHasValues) {
+    if (!backendPatchHasValues || shouldApplyMobileLocalOnlySettings(patch)) {
       return {
         settings: { ...current, ...patch, ...localOnlyPatch },
         integration: currentIntegration

@@ -89,3 +89,8 @@ export const isMobileShellLikeRuntime = () => {
 
   return !window.location.protocol.startsWith("http");
 };
+
+export const mobileRuntimeNeedsManualBackendUrl = () =>
+  isMobileShellLikeRuntime() &&
+  !import.meta.env.VITE_API_BASE_URL?.trim() &&
+  !getStoredAppBackendUrl();
