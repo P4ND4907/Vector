@@ -409,6 +409,7 @@ export const initialSnapshot: AppSnapshot = {
   settings: {
     theme: "dark",
     colorTheme: "vector",
+    appBackendUrl: "",
     advancedMode: false,
     autoReconnect: true,
     startupBehavior: "connect",

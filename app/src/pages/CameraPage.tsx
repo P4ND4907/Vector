@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatTimestamp } from "@/lib/format";
-import { apiBaseUrl } from "@/services/apiClient";
+import { getApiBaseUrl } from "@/services/apiClient";
 import { useAppStore } from "@/store/useAppStore";
 
 export function CameraPage() {
@@ -20,6 +20,7 @@ export function CameraPage() {
   const liveStreamAvailable =
     integration.source === "wirepod" && integration.wirePodReachable && robot.isConnected && robot.cameraAvailable;
   const canRetrievePhotos = integration.source === "wirepod" && integration.wirePodReachable && !integration.mockMode;
+  const apiBaseUrl = getApiBaseUrl();
   const latestPreviewSrc =
     latestSnapshot?.remoteId && liveStreamAvailable
       ? `${apiBaseUrl}/api/robot/camera/photo/${encodeURIComponent(latestSnapshot.remoteId)}`

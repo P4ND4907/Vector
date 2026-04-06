@@ -316,6 +316,7 @@ export interface PairingCandidate {
 export interface AppSettings {
   theme: ThemeMode;
   colorTheme: ColorTheme;
+  appBackendUrl: string;
   advancedMode: boolean;
   autoReconnect: boolean;
   startupBehavior: StartupBehavior;

@@ -165,7 +165,7 @@ export const createSystemActions = (
   updateSettings: async (patch) => {
     await runAction("settings", set, async () => {
       const state = get();
-      const result = await robotService.updateSettings(patch, state.settings);
+      const result = await robotService.updateSettings(patch, state.settings, state.integration);
       set((current) => ({
         settings: {
           ...current.settings,

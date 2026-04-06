@@ -7,6 +7,7 @@ import {
   patchJson,
   postJson
 } from "@/services/apiClient";
+import { persistAppBackendUrl } from "@/lib/runtime-target";
 import {
   buildProfile,
   mapCameraSnapshot,
@@ -1074,20 +1075,39 @@ export const robotService = {
     );
   },
 
-  async updateSettings(patch: Partial<AppSettings>, current: AppSettings): Promise<SettingsEnvelope> {
+  async updateSettings(
+    patch: Partial<AppSettings>,
+    current: AppSettings,
+    currentIntegration: IntegrationStatus
+  ): Promise<SettingsEnvelope> {
     clearWirePodSetupCache();
+    const localOnlyPatch = {
+      appBackendUrl:
+        patch.appBackendUrl === undefined
+          ? current.appBackendUrl
+          : persistAppBackendUrl(patch.appBackendUrl)
+    };
     const backendPatch = {
       theme: patch.theme,
       colorTheme: patch.colorTheme,
       autoDetectWirePod: patch.autoDetectWirePod,
-    customWirePodEndpoint: patch.customWirePodEndpoint,
-    mockMode: patch.mockMode,
-    reconnectOnStartup: patch.reconnectOnStartup ?? patch.autoReconnect,
-    protectChargingUntilFull: patch.protectChargingUntilFull,
-    pollingIntervalMs: patch.pollingIntervalMs,
-    liveUpdateMode: patch.liveUpdateMode,
-    serial: patch.robotSerial
-  };
+      customWirePodEndpoint: patch.customWirePodEndpoint,
+      mockMode: patch.mockMode,
+      reconnectOnStartup: patch.reconnectOnStartup ?? patch.autoReconnect,
+      protectChargingUntilFull: patch.protectChargingUntilFull,
+      pollingIntervalMs: patch.pollingIntervalMs,
+      liveUpdateMode: patch.liveUpdateMode,
+      serial: patch.robotSerial
+    };
+
+    const backendPatchHasValues = Object.values(backendPatch).some((value) => value !== undefined);
+
+    if (!backendPatchHasValues) {
+      return {
+        settings: { ...current, ...patch, ...localOnlyPatch },
+        integration: currentIntegration
+      };
+    }
 
     return useApiOrFallback(
       async () => {
@@ -1097,12 +1117,12 @@ export const robotService = {
           "Settings update failed."
         );
         return {
-          settings: mapSettings(response.settings, { ...current, ...patch }),
+          settings: mapSettings(response.settings, { ...current, ...patch, ...localOnlyPatch }),
           integration: mapIntegration(response.integration, cloneSnapshot().integration)
         };
       },
       async () => ({
-        settings: { ...current, ...patch },
+        settings: { ...current, ...patch, ...localOnlyPatch },
         integration: {
           ...cloneSnapshot().integration,
           mockMode: patch.mockMode ?? cloneSnapshot().integration.mockMode,

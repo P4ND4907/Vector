@@ -1,5 +1,5 @@
 import { useEffect, useState, type ChangeEvent } from "react";
-import { BatteryCharging, Bot, Download, MessageSquareWarning, MoonStar, RotateCcw, SunMedium, Upload, Wrench } from "lucide-react";
+import { BatteryCharging, Bot, Download, Globe, MessageSquareWarning, MoonStar, RotateCcw, Smartphone, SunMedium, Upload, Wrench } from "lucide-react";
 import { FeatureAvailabilityCard } from "@/components/settings/FeatureAvailabilityCard";
 import { OptionalModulesCard } from "@/components/settings/OptionalModulesCard";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,8 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/cn";
 import { formatTimestamp } from "@/lib/format";
+import { getApiBaseUrl } from "@/services/apiClient";
+import { getDefaultAppBackendUrl, isMobileShellLikeRuntime } from "@/lib/runtime-target";
 import { robotService } from "@/services/robotService";
 import { themePresets } from "@/lib/themes";
 import { useAppStore } from "@/store/useAppStore";
@@ -42,6 +44,7 @@ export function SettingsPage() {
   const supportState = useAppStore((state) => state.actionStates.support);
 
   const [customEndpoint, setCustomEndpoint] = useState(settings.customWirePodEndpoint);
+  const [appBackendUrl, setAppBackendUrl] = useState(settings.appBackendUrl);
   const [robotSerial, setRobotSerial] = useState(settings.robotSerial);
   const [problemSummary, setProblemSummary] = useState("");
   const [problemDetails, setProblemDetails] = useState("");
@@ -57,8 +60,9 @@ export function SettingsPage() {
 
   useEffect(() => {
     setCustomEndpoint(settings.customWirePodEndpoint);
+    setAppBackendUrl(settings.appBackendUrl);
     setRobotSerial(settings.robotSerial);
-  }, [settings.customWirePodEndpoint, settings.robotSerial]);
+  }, [settings.appBackendUrl, settings.customWirePodEndpoint, settings.robotSerial]);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,6 +127,58 @@ export function SettingsPage() {
               <p className="mt-2 text-sm text-muted-foreground">
                 {integration.robotReachable ? "Robot responds on local Wi-Fi." : "Save a serial so reconnect stays targeted."}
               </p>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Smartphone className="h-4 w-4 text-primary" />
+              Mobile foundation
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              The current desktop app assumes the backend lives on the same machine. This setting lets a future mobile shell point at a desktop or LAN backend like <span className="font-medium text-foreground">http://192.168.x.x:8787</span>.
+            </p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-black)] p-4">
+                <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Current app backend</div>
+                <div className="mt-2 break-all text-sm font-semibold">{getApiBaseUrl()}</div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  {isMobileShellLikeRuntime()
+                    ? "This runtime looks like a mobile shell, so a manual backend target is expected."
+                    : "Desktop and browser launches can still use the automatic same-device backend target."}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-black)] p-4">
+                <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Desktop default</div>
+                <div className="mt-2 break-all text-sm font-semibold">{getDefaultAppBackendUrl()}</div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Leave the field blank to keep using the automatic desktop target.
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 space-y-2">
+              <label className="text-sm text-muted-foreground">Manual app backend URL</label>
+              <Input
+                value={appBackendUrl}
+                placeholder="http://192.168.x.x:8787"
+                onChange={(event) => setAppBackendUrl(event.target.value)}
+              />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button onClick={() => void updateSettings({ appBackendUrl })}>
+                <Globe className="h-4 w-4" />
+                Save app backend
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setAppBackendUrl("");
+                  void updateSettings({ appBackendUrl: "" });
+                }}
+              >
+                <RotateCcw className="h-4 w-4" />
+                Use desktop default
+              </Button>
             </div>
           </div>
 

@@ -40,6 +40,21 @@ Phase roadmap:
 
 - [Phase plan](./docs/PHASES.md)
 - [Release steps](./docs/RELEASING.md)
+- [Mobile foundation](./docs/MOBILE_FOUNDATION.md)
+
+## Mobile Direction
+
+The mobile path is now being prepared in the codebase.
+
+- The UI is already responsive
+- Capacitor packages are already included in the app workspace
+- The frontend can now store a manual app-backend URL for a future phone shell
+
+The intended first mobile version is:
+
+`Phone UI -> LAN / desktop backend -> local WirePod -> Vector`
+
+That keeps the architecture honest while we prepare a real mobile app foundation first.
 
 ## Why This App Exists
 

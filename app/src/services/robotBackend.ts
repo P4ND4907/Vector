@@ -203,6 +203,7 @@ export const mapSettings = (settings: ServerSettings, fallback: AppSettings): Ap
   ...fallback,
   theme: settings.theme ?? fallback.theme,
   colorTheme: settings.colorTheme ?? fallback.colorTheme,
+  appBackendUrl: fallback.appBackendUrl,
   autoReconnect: settings.reconnectOnStartup,
   autoDetectWirePod: settings.autoDetectWirePod,
   customWirePodEndpoint: settings.customWirePodEndpoint,

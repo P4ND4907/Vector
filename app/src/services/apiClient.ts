@@ -1,6 +1,6 @@
-export const apiBaseUrl =
-  import.meta.env.VITE_API_BASE_URL?.trim() ||
-  `${window.location.protocol}//${window.location.hostname}:8787`;
+import { getResolvedAppBackendUrl } from "@/lib/runtime-target";
+
+export const getApiBaseUrl = () => getResolvedAppBackendUrl();
 
 export class ApiClientError extends Error {
   constructor(
@@ -38,7 +38,7 @@ export const readJson = async <T,>(response: Response, fallbackMessage = "Reques
 
 export const getJson = async <T,>(path: string, fallbackMessage?: string) => {
   try {
-    const response = await fetch(`${apiBaseUrl}${path}`);
+    const response = await fetch(`${getApiBaseUrl()}${path}`);
     return readJson<T>(response, fallbackMessage);
   } catch (error) {
     if (error instanceof ApiClientError) {
@@ -50,7 +50,7 @@ export const getJson = async <T,>(path: string, fallbackMessage?: string) => {
 
 export const postJson = async <T,>(path: string, body?: unknown, fallbackMessage?: string) => {
   try {
-    const response = await fetch(`${apiBaseUrl}${path}`, {
+    const response = await fetch(`${getApiBaseUrl()}${path}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -68,7 +68,7 @@ export const postJson = async <T,>(path: string, body?: unknown, fallbackMessage
 
 export const patchJson = async <T,>(path: string, body: unknown, fallbackMessage?: string) => {
   try {
-    const response = await fetch(`${apiBaseUrl}${path}`, {
+    const response = await fetch(`${getApiBaseUrl()}${path}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json"
@@ -86,7 +86,7 @@ export const patchJson = async <T,>(path: string, body: unknown, fallbackMessage
 
 export const deleteJson = async <T,>(path: string, fallbackMessage?: string) => {
   try {
-    const response = await fetch(`${apiBaseUrl}${path}`, {
+    const response = await fetch(`${getApiBaseUrl()}${path}`, {
       method: "DELETE"
     });
     return readJson<T>(response, fallbackMessage);
