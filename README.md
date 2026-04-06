@@ -125,6 +125,10 @@ Important:
 
 By default, this project is local-first.
 
+Privacy policy:
+
+- [PRIVACY.md](./PRIVACY.md)
+
 What stays local:
 
 - robot status polling
