@@ -226,6 +226,22 @@ const playVisualCue = async (
   }
 };
 
+const playCueAndSpeak = async (
+  controller: RobotController,
+  {
+    animationId,
+    spokenText,
+    holdMs = 325
+  }: {
+    animationId: string;
+    spokenText: string;
+    holdMs?: number;
+  }
+) => {
+  await playVisualCue(controller, animationId, holdMs);
+  return speakOnly(controller, spokenText);
+};
+
 const runAssistantAction = async (
   controller: RobotController,
   action: ParsedAiAction,
@@ -439,6 +455,51 @@ const runAssistantAction = async (
         status && !status.isDocked && !status.isCharging ? "game-time" : "question-prompt";
       await playVisualCue(controller, animationId, animationId === "game-time" ? 450 : 250);
       return speakOnly(controller, `I rolled a ${roll}.`);
+    }
+
+    case "quit-blackjack": {
+      return playCueAndSpeak(controller, {
+        animationId: "goodbye-nod",
+        spokenText: spokenResponse || "Ending blackjack.",
+        holdMs: 250
+      });
+    }
+
+    case "listen-to-music": {
+      return playCueAndSpeak(controller, {
+        animationId: "celebrate-spark",
+        spokenText: spokenResponse || "Music listening mode enabled.",
+        holdMs: 300
+      });
+    }
+
+    case "play-new-game": {
+      return playCueAndSpeak(controller, {
+        animationId: "game-time",
+        spokenText: spokenResponse || "Starting new game mode.",
+        holdMs: 450
+      });
+    }
+
+    case "play-classic-game": {
+      try {
+        await controller.animation({ animationId: "intent_play_blackjack" });
+        return spokenResponse || "Starting classic game mode.";
+      } catch {
+        return playCueAndSpeak(controller, {
+          animationId: "game-time",
+          spokenText: spokenResponse || "Starting classic game mode.",
+          holdMs: 450
+        });
+      }
+    }
+
+    case "play-bingo": {
+      return playCueAndSpeak(controller, {
+        animationId: "game-time",
+        spokenText: spokenResponse || "Bingo mode activated.",
+        holdMs: 450
+      });
     }
 
     case "chat-with-user": {

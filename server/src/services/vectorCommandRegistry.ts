@@ -412,7 +412,9 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
   }
 
   if (exactAlias(normalized, ["quit blackjack", "stop blackjack", "end blackjack"])) {
-    return buildPlaceholder("quit_blackjack", "legacy", "Quit blackjack", "Ending blackjack.");
+    return buildAssistant("quit_blackjack", "legacy", "Quit blackjack", "quit-blackjack", {
+      spokenResponse: "Ending blackjack."
+    });
   }
 
   if (exactAlias(normalized, ["give me a fist bump", "fist bump"])) {
@@ -476,7 +478,9 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
   }
 
   if (exactAlias(normalized, ["listen to music", "listen to the music", "music mode"])) {
-    return buildPlaceholder("listen_to_music", "legacy", "Listen to music", "Music listening mode enabled.");
+    return buildAssistant("listen_to_music", "legacy", "Listen to music", "listen-to-music", {
+      spokenResponse: "Music listening mode enabled."
+    });
   }
 
   if (exactAlias(normalized, ["play a trick", "do a trick", "show me a trick"])) {
@@ -558,15 +562,21 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
   }
 
   if (normalized === "lets play a new game") {
-    return buildPlaceholder("play_new_game", "extended", "Play a new game", "Starting new game mode.");
+    return buildAssistant("play_new_game", "extended", "Play a new game", "play-new-game", {
+      spokenResponse: "Starting new game mode."
+    });
   }
 
   if (normalized === "lets play a classic") {
-    return buildPlaceholder("play_classic", "extended", "Play a classic game", "Starting classic game mode.");
+    return buildAssistant("play_classic", "extended", "Play a classic game", "play-classic-game", {
+      spokenResponse: "Starting classic game mode."
+    });
   }
 
   if (exactAlias(normalized, ["bingo", "start bingo", "play bingo"])) {
-    return buildPlaceholder("bingo", "extended", "Play bingo", "Bingo mode activated.");
+    return buildAssistant("bingo", "extended", "Play bingo", "play-bingo", {
+      spokenResponse: "Bingo mode activated."
+    });
   }
 
   const chatWithMatch = normalized.match(/^chat with\s+(.+)$/i);

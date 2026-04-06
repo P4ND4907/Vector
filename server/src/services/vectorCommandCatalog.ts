@@ -207,12 +207,12 @@ const commandCatalog: VectorCommandCatalogItemRecord[] = [
     key: "games",
     title: "Blackjack, bingo, and classic games",
     category: "community",
-    status: "partial",
-    summary: "These game-style commands are recognized today, but most still need a fuller robot-side implementation.",
+    status: "live",
+    summary: "Game-style commands now trigger real robot cues and spoken flows, with room to keep expanding the deeper game logic later.",
     aliases: ["play blackjack", "quit blackjack", "bingo", "let's play a classic"],
     samplePrompt: "play blackjack",
     surfaces: ["face", "voice"],
-    note: "Good target for the next legacy-command expansion pass."
+    note: "Classic and community game prompts now route through live robot responses instead of placeholder-only replies."
   },
   {
     key: "language_tools",
