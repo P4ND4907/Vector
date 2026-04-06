@@ -9,7 +9,8 @@ const settingsPatchSchema = z.object({
   customWirePodEndpoint: z.string().optional(),
   mockMode: z.boolean().optional(),
   reconnectOnStartup: z.boolean().optional(),
-  pollingIntervalMs: z.number().int().min(2000).max(30000).optional(),
+  protectChargingUntilFull: z.boolean().optional(),
+  pollingIntervalMs: z.number().int().min(1000).max(30000).optional(),
   liveUpdateMode: z.enum(["polling"]).optional(),
   serial: z.string().optional()
 });

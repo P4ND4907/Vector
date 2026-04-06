@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { getChargingProtectionMessage, isChargingProtectionActive } from "@/lib/charging-protection";
 import { formatTimestamp } from "@/lib/format";
 import { getBrainStatusLabel } from "@/lib/robot-state";
 import { useAppStore } from "@/store/useAppStore";
@@ -100,12 +101,12 @@ const describeAction = (action: AiCommandAction) => {
           return "The app will read the saved user identity.";
         case "weather":
           return action.params.location
-            ? `The backend will look up the current weather in ${String(action.params.location)}.`
-            : "The backend will look up the current weather using the saved location.";
+            ? `The backend will look up the current weather in ${String(action.params.location)}, show a quick on-robot visual cue, and then speak the forecast.`
+            : "The backend will look up the current weather, show a quick on-robot visual cue, and then speak the forecast.";
         case "weather-tomorrow":
           return action.params.location
-            ? `The backend will look up tomorrow's forecast in ${String(action.params.location)}.`
-            : "The backend will look up tomorrow's forecast using the saved location.";
+            ? `The backend will look up tomorrow's forecast in ${String(action.params.location)}, show a quick on-robot visual cue, and then speak the result.`
+            : "The backend will look up tomorrow's forecast, show a quick on-robot visual cue, and then speak the result.";
         case "set-timer":
           return action.params.durationLabel
             ? `The app will start a timer for ${String(action.params.durationLabel)}.`
@@ -137,7 +138,7 @@ const describeAction = (action: AiCommandAction) => {
         case "translate-phrase":
           return "This translation request is recognized and logged, but live translation is still a future integration.";
         case "roll-die":
-          return "The app will roll a virtual die and read the result aloud.";
+          return "The app will roll a virtual die, trigger a quick on-robot game cue, and read the result aloud.";
         case "chat-with-user":
           return action.params.target
             ? `The app will save ${String(action.params.target)} as the active chat target.`
@@ -170,6 +171,7 @@ const describeAction = (action: AiCommandAction) => {
 export function AiCommandsPage() {
   const robot = useAppStore((state) => state.robot);
   const integration = useAppStore((state) => state.integration);
+  const settings = useAppStore((state) => state.settings);
   const aiCommandHistory = useAppStore((state) => state.aiCommandHistory);
   const recordAiCommandHistory = useAppStore((state) => state.recordAiCommandHistory);
 
@@ -186,9 +188,12 @@ export function AiCommandsPage() {
   const aiModeLabel = aiStatus?.enabled ? aiStatus.model : "Rules parser";
   const previewIsFresh = preview ? normalizePrompt(preview.prompt) === normalizePrompt(prompt) : false;
   const showMessageAsError = !preview && message !== DEFAULT_MESSAGE && !previewing && !executing;
-  const dockNote = robot.isDocked
-    ? "Vector is on the charger. Take it off the dock before asking for wheel movement."
-    : null;
+  const chargingProtectionActive = isChargingProtectionActive(settings, robot);
+  const dockNote = chargingProtectionActive
+    ? getChargingProtectionMessage()
+    : robot.isDocked
+      ? "Vector is on the charger. Take it off the dock before asking for wheel movement."
+      : null;
 
   useEffect(() => {
     let cancelled = false;

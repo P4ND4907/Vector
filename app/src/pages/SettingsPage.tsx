@@ -1,5 +1,5 @@
 import { useEffect, useState, type ChangeEvent } from "react";
-import { Bot, Download, MessageSquareWarning, MoonStar, RotateCcw, SunMedium, Upload, Wrench } from "lucide-react";
+import { BatteryCharging, Bot, Download, MessageSquareWarning, MoonStar, RotateCcw, SunMedium, Upload, Wrench } from "lucide-react";
 import { FeatureAvailabilityCard } from "@/components/settings/FeatureAvailabilityCard";
 import { OptionalModulesCard } from "@/components/settings/OptionalModulesCard";
 import { Button } from "@/components/ui/button";
@@ -276,6 +276,24 @@ export function SettingsPage() {
             <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <BatteryCharging className="h-4 w-4 text-primary" />
+                    Keep charging until nearly full
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Block wake, drive, roam, and bigger movement routines while Vector is still charging.
+                  </div>
+                </div>
+                <Switch
+                  checked={settings.protectChargingUntilFull}
+                  onCheckedChange={(checked) => void updateSettings({ protectChargingUntilFull: checked })}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
                   <div className="text-sm font-semibold">Mock mode</div>
                   <div className="text-xs text-muted-foreground">Keep the app testable without WirePod or the robot.</div>
                 </div>
@@ -362,15 +380,15 @@ export function SettingsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm font-semibold">Polling interval</div>
-                <div className="text-xs text-muted-foreground">How often the frontend refreshes live robot status.</div>
+                <div className="text-xs text-muted-foreground">How often the frontend refreshes live robot status. Docked and charging checks speed up automatically.</div>
               </div>
               <div className="text-lg font-semibold">{settings.pollingIntervalMs} ms</div>
             </div>
             <Range
               className="mt-4"
-              min={2000}
+              min={1000}
               max={12000}
-              step={500}
+              step={250}
               value={settings.pollingIntervalMs}
               onChange={(event) => void updateSettings({ pollingIntervalMs: Number(event.target.value) })}
             />

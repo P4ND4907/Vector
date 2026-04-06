@@ -31,6 +31,7 @@ import {
   type ServerSettings,
   type ServerSupportReport
 } from "@/services/robotBackend";
+import { CHARGING_PROTECTION_RELEASE_PERCENT } from "@/lib/charging-protection";
 import { buildFeatureFlags, buildOptionalFeatureList } from "@/lib/optional-features";
 import type {
   AnimationItem,
@@ -120,6 +121,8 @@ interface RobotEnvelope {
 let telemetryPausedUntil = 0;
 const AUTO_RECONNECT_COOLDOWN_MS = 15_000;
 const WIREPOD_SETUP_CACHE_MS = 4_000;
+const MIN_POLLING_INTERVAL_MS = 1_000;
+const FAST_DOCKED_POLLING_INTERVAL_MS = 1_500;
 let wirePodSetupCache: { value: WirePodSetupStatus; expiresAt: number } | null = null;
 
 const clearWirePodSetupCache = () => {
@@ -157,6 +160,14 @@ const shouldAttemptReconnect = (
   }
 
   if (!context.integration.wirePodReachable) {
+    return false;
+  }
+
+  if (
+    context.settings.protectChargingUntilFull &&
+    context.robot.isDocked &&
+    context.robot.batteryPercent < CHARGING_PROTECTION_RELEASE_PERCENT
+  ) {
     return false;
   }
 
@@ -288,14 +299,16 @@ const buildOfflineWirePodState = (
   robot: {
     ...robot,
     isConnected: false,
-    isCharging: false,
-    isDocked: false,
+    isCharging: robot.isCharging,
+    isDocked: robot.isDocked,
     connectionState: "error",
-    firmwareVersion: "WirePod unavailable",
+    firmwareVersion: robot.firmwareVersion || "WirePod unavailable",
     wifiStrength: 0,
-    mood: "sleepy",
-    systemStatus: "offline",
-    currentActivity: "Vector brain offline",
+    mood: robot.isCharging ? "charging" : "sleepy",
+    systemStatus: robot.isCharging ? "charging" : robot.isDocked ? "docked" : "offline",
+    currentActivity: robot.isCharging
+      ? "Charging safely while the local brain is offline."
+      : "Vector brain offline",
     lastSeen: robot.lastSeen || new Date().toISOString(),
     connectionSource: "wirepod"
   },
@@ -579,6 +592,7 @@ export const robotService = {
   },
 
   async playAnimation(animation: AnimationItem, context?: { robot: Robot; integration: IntegrationStatus }) {
+    pauseTelemetry(7_000);
     return useApiOrFallback(
       async () => {
         const fallback = context ?? {
@@ -608,6 +622,7 @@ export const robotService = {
   },
 
   async dock(context?: { robot: Robot; integration: IntegrationStatus }) {
+    pauseTelemetry(10_000);
     return useApiOrFallback(
       async () => {
         const fallback = context ?? {
@@ -637,6 +652,7 @@ export const robotService = {
   },
 
   async wake(context?: { robot: Robot; integration: IntegrationStatus }) {
+    pauseTelemetry(6_000);
     return useApiOrFallback(
       async () => {
         const fallback = context ?? {
@@ -1064,13 +1080,14 @@ export const robotService = {
       theme: patch.theme,
       colorTheme: patch.colorTheme,
       autoDetectWirePod: patch.autoDetectWirePod,
-      customWirePodEndpoint: patch.customWirePodEndpoint,
-      mockMode: patch.mockMode,
-      reconnectOnStartup: patch.reconnectOnStartup ?? patch.autoReconnect,
-      pollingIntervalMs: patch.pollingIntervalMs,
-      liveUpdateMode: patch.liveUpdateMode,
-      serial: patch.robotSerial
-    };
+    customWirePodEndpoint: patch.customWirePodEndpoint,
+    mockMode: patch.mockMode,
+    reconnectOnStartup: patch.reconnectOnStartup ?? patch.autoReconnect,
+    protectChargingUntilFull: patch.protectChargingUntilFull,
+    pollingIntervalMs: patch.pollingIntervalMs,
+    liveUpdateMode: patch.liveUpdateMode,
+    serial: patch.robotSerial
+  };
 
     return useApiOrFallback(
       async () => {
@@ -1191,7 +1208,15 @@ export const robotService = {
       if (stopped) {
         return;
       }
-      const interval = Math.max(2000, getContext().settings.pollingIntervalMs || 6000);
+      const context = getContext();
+      const baseInterval = Math.max(
+        MIN_POLLING_INTERVAL_MS,
+        context.settings.pollingIntervalMs || 6000
+      );
+      const interval =
+        context.robot.isDocked || context.robot.isCharging
+          ? Math.min(baseInterval, FAST_DOCKED_POLLING_INTERVAL_MS)
+          : baseInterval;
       timer = window.setTimeout(() => {
         void poll();
       }, interval);

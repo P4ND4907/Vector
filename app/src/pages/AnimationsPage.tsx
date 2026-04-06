@@ -4,18 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs } from "@/components/ui/tabs";
+import { animationCategories } from "@/lib/animation-catalog";
 import { formatTimestamp } from "@/lib/format";
 import { useAppStore } from "@/store/useAppStore";
-
-const categories = [
-  { value: "happy", label: "Happy" },
-  { value: "curious", label: "Curious" },
-  { value: "greeting", label: "Greeting" },
-  { value: "idle", label: "Idle" },
-  { value: "silly", label: "Silly" },
-  { value: "celebration", label: "Celebration" },
-  { value: "sleepy", label: "Sleepy" }
-];
 
 export function AnimationsPage() {
   const animations = useAppStore((state) => state.animations);
@@ -42,7 +33,11 @@ export function AnimationsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-          <Tabs value={category} onValueChange={setCategory} items={categories} />
+          <Tabs
+            value={category}
+            onValueChange={setCategory}
+            items={animationCategories.map(({ value, label }) => ({ value, label }))}
+          />
           <div className="grid gap-3 md:grid-cols-2">
             {filteredAnimations.map((animation) => (
               <div key={animation.id} className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
@@ -133,4 +128,3 @@ export function AnimationsPage() {
     </div>
   );
 }
-

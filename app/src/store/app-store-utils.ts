@@ -118,6 +118,30 @@ export const mergePersistedState = (
     return currentState;
   }
 
+  const persistedAnimations = Array.isArray(persistedState.animations)
+    ? (persistedState.animations as AppState["animations"])
+    : [];
+  const persistedAnimationById = new Map(
+    persistedAnimations
+      .filter((item): item is AppState["animations"][number] => Boolean(item?.id))
+      .map((item) => [item.id, item])
+  );
+  const animations = [
+    ...currentState.animations.map((item) => ({
+      ...item,
+      ...(persistedAnimationById.get(item.id) ?? {})
+    })),
+    ...persistedAnimations.filter(
+      (item) => item?.id && !currentState.animations.some((currentItem) => currentItem.id === item.id)
+    )
+  ];
+  const animationIds = new Set(animations.map((item) => item.id));
+  const queuedAnimations = Array.isArray(persistedState.queuedAnimations)
+    ? persistedState.queuedAnimations.filter(
+        (item): item is string => typeof item === "string" && animationIds.has(item)
+      )
+    : currentState.queuedAnimations.filter((item) => animationIds.has(item));
+
   return {
     ...currentState,
     ...persistedState,
@@ -161,10 +185,8 @@ export const mergePersistedState = (
     aiCommandHistory: Array.isArray(persistedState.aiCommandHistory)
       ? persistedState.aiCommandHistory
       : currentState.aiCommandHistory,
-    queuedAnimations: Array.isArray(persistedState.queuedAnimations)
-      ? persistedState.queuedAnimations
-      : currentState.queuedAnimations,
-    animations: Array.isArray(persistedState.animations) ? persistedState.animations : currentState.animations,
+    queuedAnimations,
+    animations,
     savedPhrases: Array.isArray(persistedState.savedPhrases)
       ? persistedState.savedPhrases
       : currentState.savedPhrases,

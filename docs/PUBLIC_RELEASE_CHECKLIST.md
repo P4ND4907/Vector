@@ -5,6 +5,7 @@ Use this checklist before changing the GitHub repository from private to public.
 ## Safety
 
 - Confirm `server/.env.local` is still local-only and not committed.
+- If you already used a real OpenAI key locally, avoid sharing zipped project folders or screenshots that include the local env file.
 - Confirm no API keys or private tokens appear in screenshots, issue templates, or docs.
 - Confirm local IP addresses shown in screenshots are ones you are comfortable sharing.
 - Confirm `node_modules/`, `dist-electron/`, `.runtime/`, and local logs are not included in the commit.
@@ -25,6 +26,9 @@ Use this checklist before changing the GitHub repository from private to public.
 - If possible, test the launcher once on a second clean Windows machine.
 - Confirm Mock Mode is off in any real-robot screenshots.
 - Confirm the startup screen shows honest state when WirePod or the robot is unavailable.
+- Confirm charging protection is on before taking public real-robot screenshots or demos.
+- If you demo weather by voice, confirm the in-app weather API setup is configured first.
+- If your robot is having charger-contact issues, do not oversell charging reliability in public copy.
 
 ## Release Files
 
@@ -38,3 +42,4 @@ Use this checklist before changing the GitHub repository from private to public.
 - Review the GitHub file list one last time.
 - Change repository visibility to public.
 - Create or update a GitHub Release if you want testers to download an installer instead of the source.
+- Set the GitHub repo description to something like: `Local-first dashboard for controlling a Vector robot through WirePod.`

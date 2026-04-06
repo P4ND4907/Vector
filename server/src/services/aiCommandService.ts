@@ -4,6 +4,10 @@ import type {
   RobotController,
   RobotStatus
 } from "../robot/types.js";
+import {
+  buildChargingProtectionMessage,
+  isChargingProtectionActive
+} from "./chargingProtectionService.js";
 import { fetchWeatherSummary } from "./weatherService.js";
 import { matchVectorCommand } from "./vectorCommandRegistry.js";
 
@@ -206,6 +210,22 @@ const speakOnly = async (controller: RobotController, text: string) => {
   return log.resultMessage;
 };
 
+const playVisualCue = async (
+  controller: RobotController,
+  animationId: string,
+  holdMs = 325
+) => {
+  try {
+    await controller.animation({ animationId });
+    if (holdMs > 0) {
+      await sleep(holdMs);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const runAssistantAction = async (
   controller: RobotController,
   action: ParsedAiAction,
@@ -241,19 +261,25 @@ const runAssistantAction = async (
       const settings = await controller.getSettings();
       const requestedLocation = readOptionalStringParam(action, "location");
       const location = requestedLocation || settings.weatherLocation || "Anchorage, Alaska";
+      let animationId = "question-prompt";
       if (location !== settings.weatherLocation) {
         await controller.updateSettings({ weatherLocation: location });
       }
 
-      const summary = await fetchWeatherSummary(location, kind === "weather-tomorrow" ? 1 : 0);
       if (kind === "weather" && !requestedLocation) {
         try {
-          await controller.animation({ animationId: "weather-report" });
-          await sleep(500);
+          const weatherConfig = await controller.getWirePodWeatherConfig();
+          if (weatherConfig.enable && weatherConfig.provider && weatherConfig.key) {
+            animationId = "weather-report";
+          }
         } catch {
-          // If the stock weather routine is unavailable, still speak the custom forecast summary.
+          // If the stock weather routine is unavailable, still use a safe on-robot visual cue.
         }
       }
+
+      await playVisualCue(controller, animationId, animationId === "weather-report" ? 500 : 325);
+
+      const summary = await fetchWeatherSummary(location, kind === "weather-tomorrow" ? 1 : 0);
 
       return speakOnly(controller, summary);
     }
@@ -408,6 +434,10 @@ const runAssistantAction = async (
 
     case "roll-die": {
       const roll = 1 + Math.floor(Math.random() * 6);
+      const status = await Promise.resolve(controller.getStatus()).catch(() => null);
+      const animationId =
+        status && !status.isDocked && !status.isCharging ? "game-time" : "question-prompt";
+      await playVisualCue(controller, animationId, animationId === "game-time" ? 450 : 250);
       return speakOnly(controller, `I rolled a ${roll}.`);
     }
 
@@ -450,8 +480,20 @@ const runAssistantAction = async (
       return log.resultMessage;
     }
 
+    case "volume-up": {
+      const status = await controller.getStatus();
+      const nextVolume = Math.min(5, (status.volume ?? 3) + 1);
+      const log = await controller.setVolume({ volume: nextVolume });
+      return log.resultMessage;
+    }
+
     case "mute-audio": {
       const log = await controller.toggleMute({ isMuted: true });
+      return log.resultMessage;
+    }
+
+    case "unmute-audio": {
+      const log = await controller.toggleMute({ isMuted: false });
       return log.resultMessage;
     }
 
@@ -514,16 +556,22 @@ export const executeAiCommand = async (
   parsed: ParsedAiCommand
 ) => {
   const results: string[] = [];
+  const settings = await controller.getSettings();
   let latestStatus = await controller.getStatus();
 
   for (const action of parsed.actions) {
     if (action.type === "speak") {
       const text = String(action.params.text ?? "");
-      if (
+      if (isChargingProtectionActive(settings, latestStatus)) {
+        results.push(buildChargingProtectionMessage("Speech requests"));
+        latestStatus = await controller.getStatus();
+        continue;
+      }
+      const needsWake =
         !latestStatus.isConnected ||
         latestStatus.mood === "sleepy" ||
-        latestStatus.connectionState !== "connected"
-      ) {
+        latestStatus.connectionState !== "connected";
+      if (needsWake) {
         try {
           await controller.wake();
         } catch {}
@@ -541,6 +589,11 @@ export const executeAiCommand = async (
       const durationMs = action.params.durationMs
         ? Number(action.params.durationMs)
         : defaultDriveDurationMs(direction);
+      if (direction !== "stop" && isChargingProtectionActive(settings, latestStatus)) {
+        results.push(buildChargingProtectionMessage("Drive commands"));
+        latestStatus = await controller.getStatus();
+        continue;
+      }
       if (latestStatus.isDocked) {
         results.push("Vector is still on the charger, so wheel movement may stay limited until you take it off the dock.");
       }
@@ -571,6 +624,11 @@ export const executeAiCommand = async (
     }
 
     if (action.type === "wake") {
+      if (isChargingProtectionActive(settings, latestStatus)) {
+        results.push(buildChargingProtectionMessage("Wake requests"));
+        latestStatus = await controller.getStatus();
+        continue;
+      }
       const log = await controller.wake();
       results.push(log.resultMessage);
       latestStatus = await controller.getStatus();

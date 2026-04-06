@@ -15,6 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { getChargingProtectionMessage, isChargingProtectionActive } from "@/lib/charging-protection";
 import { formatRelativeTime, formatTimestamp, moodLabel } from "@/lib/format";
 import { getBatteryState, getBrainStatusLabel, getSystemStatusDisplay, logStatusTone } from "@/lib/robot-state";
 import { useAppStore } from "@/store/useAppStore";
@@ -31,6 +32,7 @@ const statusTone: Record<string, string> = {
 export function DashboardPage() {
   const robot = useAppStore((state) => state.robot);
   const integration = useAppStore((state) => state.integration);
+  const settings = useAppStore((state) => state.settings);
   const routines = useAppStore((state) => state.routines);
   const logs = useAppStore((state) => state.logs);
   const connectRobot = useAppStore((state) => state.connectRobot);
@@ -47,8 +49,11 @@ export function DashboardPage() {
   const systemStatus = getSystemStatusDisplay(robot.systemStatus);
   const brainStatus = getBrainStatusLabel(integration);
   const robotOnline = robot.isConnected && integration.robotReachable;
+  const chargingProtectionActive = isChargingProtectionActive(settings, robot);
   const bannerMessage =
-    connectState.message || integration.note || "If WirePod restarts, the dashboard will retry and keep the error plain-English.";
+    connectState.message ||
+    (chargingProtectionActive ? getChargingProtectionMessage() : integration.note) ||
+    "If WirePod restarts, the dashboard will retry and keep the error plain-English.";
   const primaryActionLabel = robotOnline ? "Reconnect" : "Retry connection";
   const recoverySteps = integration.wirePodReachable
     ? [
@@ -187,7 +192,7 @@ export function DashboardPage() {
                 </div>
                 <p className="mt-2 text-sm text-amber-50/90">{bannerMessage}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Button size="sm" variant="ghost" onClick={wakeRobot}>
+                  <Button size="sm" variant="ghost" onClick={wakeRobot} disabled={chargingProtectionActive}>
                     Wake robot
                   </Button>
                   <Button size="sm" variant="ghost" onClick={returnToDock} disabled={robot.isDocked}>

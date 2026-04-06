@@ -2,13 +2,23 @@ import type { CommandLogRecord, DiscoveredRobot, RobotStatus } from "./types.js"
 import type { WirePodRobotRecord } from "../services/wirepodService.js";
 
 export const animationIntentMap: Record<string, string> = {
-  "happy-hello": "intent_imperative_dance",
-  "greeting-wave": "intent_imperative_dance",
-  "silly-wiggle": "intent_imperative_dance",
+  "happy-hello": "intent_greeting_hello",
+  "praise-reaction": "intent_imperative_praise",
+  "curious-peek": "intent_knowledge_promptquestion",
+  "question-prompt": "intent_knowledge_promptquestion",
+  "find-cube": "intent_imperative_findcube",
+  "fetch-cube": "intent_imperative_fetchcube",
+  "pick-up-cube": "intent_play_pickupcube",
+  "greeting-wave": "intent_greeting_goodmorning",
+  "goodbye-nod": "intent_greeting_goodbye",
+  "idle-scan": "intent_explore_start",
+  "silly-wiggle": "intent_play_anytrick",
+  "wheelstand": "intent_play_popawheelie",
   "celebrate-spark": "intent_imperative_dance",
+  "fist-bump": "intent_play_fistbump",
+  "roll-cube": "intent_play_rollcube",
+  "game-time": "intent_play_anygame",
   "weather-report": "intent_weather_extend",
-  "curious-peek": "explore_start",
-  "idle-scan": "explore_start",
   "sleepy-yawn": "intent_system_sleep"
 };
 

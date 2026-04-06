@@ -6,11 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Range } from "@/components/ui/range";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { getChargingProtectionMessage, isChargingProtectionActive } from "@/lib/charging-protection";
 import { useAppStore } from "@/store/useAppStore";
 
 export function DrivePage() {
   const robot = useAppStore((state) => state.robot);
   const integration = useAppStore((state) => state.integration);
+  const settings = useAppStore((state) => state.settings);
   const driveState = useAppStore((state) => state.driveState);
   const driveRobot = useAppStore((state) => state.driveRobot);
   const moveHead = useAppStore((state) => state.moveHead);
@@ -22,9 +24,12 @@ export function DrivePage() {
   const returnToDock = useAppStore((state) => state.returnToDock);
   const setRobotVolume = useAppStore((state) => state.setRobotVolume);
   const [text, setText] = useState("Hello there.");
-  const dockWarning = robot.isDocked
-    ? "Vector is on the charger. Take it off the dock before expecting wheel movement."
-    : null;
+  const chargingProtectionActive = isChargingProtectionActive(settings, robot);
+  const dockWarning = chargingProtectionActive
+    ? getChargingProtectionMessage()
+    : robot.isDocked
+      ? "Vector is on the charger. Take it off the dock before expecting wheel movement."
+      : null;
 
   return (
     <div className="grid gap-4 xl:grid-cols-[1.02fr_0.98fr]">
@@ -51,28 +56,28 @@ export function DrivePage() {
 
           <div className="mx-auto grid max-w-md grid-cols-3 gap-3">
             <div />
-            <Button size="lg" onClick={() => driveRobot("forward")}>
+            <Button size="lg" onClick={() => driveRobot("forward")} disabled={chargingProtectionActive}>
               <ArrowUp className="h-5 w-5" />
             </Button>
             <div />
-            <Button size="lg" variant="outline" onClick={() => driveRobot("left")}>
+            <Button size="lg" variant="outline" onClick={() => driveRobot("left")} disabled={chargingProtectionActive}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <Button size="lg" variant="destructive" onClick={() => driveRobot("stop")}>
               <ShieldAlert className="h-5 w-5" />
             </Button>
-            <Button size="lg" variant="outline" onClick={() => driveRobot("right")}>
+            <Button size="lg" variant="outline" onClick={() => driveRobot("right")} disabled={chargingProtectionActive}>
               <ArrowRight className="h-5 w-5" />
             </Button>
             <div />
-            <Button size="lg" onClick={() => driveRobot("reverse")}>
+            <Button size="lg" onClick={() => driveRobot("reverse")} disabled={chargingProtectionActive}>
               <ArrowDown className="h-5 w-5" />
             </Button>
             <div />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
-            <Button variant="secondary" onClick={wakeRobot}>
+            <Button variant="secondary" onClick={wakeRobot} disabled={chargingProtectionActive}>
               <Zap className="h-4 w-4" />
               Wake
             </Button>

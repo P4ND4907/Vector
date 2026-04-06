@@ -16,6 +16,7 @@ import type {
   SupportReport,
   VisionEvent
 } from "@/types";
+import { animationCatalog } from "@/lib/animation-catalog";
 import { buildFeatureFlags, buildOptionalFeatureList } from "@/lib/optional-features";
 
 const buildSnapshotDataUrl = (label: string, accent: string) => {
@@ -106,15 +107,7 @@ const availableRobots: PairingCandidate[] = [
   }
 ];
 
-const animations: AnimationItem[] = [
-  { id: "happy-hello", name: "Happy Hello", category: "happy", favorite: true, durationMs: 2200 },
-  { id: "curious-peek", name: "Curious Peek", category: "curious", favorite: true, durationMs: 1800 },
-  { id: "greeting-wave", name: "Greeting Wave", category: "greeting", favorite: false, durationMs: 1600 },
-  { id: "idle-scan", name: "Idle Scan", category: "idle", favorite: false, durationMs: 3200 },
-  { id: "silly-wiggle", name: "Silly Wiggle", category: "silly", favorite: true, durationMs: 2500 },
-  { id: "celebrate-spark", name: "Celebrate Spark", category: "celebration", favorite: false, durationMs: 2800 },
-  { id: "sleepy-yawn", name: "Sleepy Yawn", category: "sleepy", favorite: false, durationMs: 2600 }
-];
+const animations: AnimationItem[] = animationCatalog;
 
 const savedPhrases: SavedPhrase[] = [
   { id: "phrase-1", label: "Morning", text: "Good morning. Systems are green and ready." },
@@ -430,6 +423,7 @@ export const initialSnapshot: AppSnapshot = {
     savedWirePodEndpoint: "",
     mockMode: true,
     reconnectOnStartup: true,
+    protectChargingUntilFull: true,
     pollingIntervalMs: 6000,
     liveUpdateMode: "polling",
     robotSerial: robot.serial ?? ""

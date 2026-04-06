@@ -117,6 +117,7 @@ export interface RuntimeSettings {
   savedWirePodEndpoint: string;
   mockMode: boolean;
   reconnectOnStartup: boolean;
+  protectChargingUntilFull: boolean;
   pollingIntervalMs: number;
   liveUpdateMode: LiveUpdateMode;
   serial: string;

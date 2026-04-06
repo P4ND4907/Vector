@@ -137,7 +137,7 @@ const extractDurationMs = (value: string) => {
 };
 
 const LEGACY_HELP_TEXT =
-  "Try hello, what time is it, what's the weather, take a picture, roll a die, drive forward, go dock, run diagnostics, or my name is followed by your name.";
+  "Try hello, what time is it, what's the weather, take a selfie, roll a die, play a trick, fetch your cube, drive forward, go dock, run diagnostics, or my name is followed by your name.";
 
 const buildPlaceholder = (
   commandKey: string,
@@ -211,7 +211,7 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
   }
 
   const weatherTomorrowMatch = normalized.match(
-    /^(?:(?:whats|what is)\s+the weather tomorrow|weather tomorrow)(?:\s+in\s+(.+))?$/i
+    /^(?:(?:whats|what is)\s+the weather(?: report)? tomorrow|weather(?: report)? tomorrow)(?:\s+in\s+(.+))?$/i
   );
   if (weatherTomorrowMatch) {
     const location = weatherTomorrowMatch[1]?.trim();
@@ -225,7 +225,7 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
   }
 
   const weatherMatch = normalized.match(
-    /^(?:(?:whats|what is)\s+the weather|weather)(?:\s+in\s+(.+))?$/i
+    /^(?:(?:whats|what is)\s+the weather(?: report)?|weather(?: report)?)(?:\s+in\s+(.+))?$/i
   );
   if (weatherMatch) {
     const location = weatherMatch[1]?.trim();
@@ -256,7 +256,13 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
   }
 
   if (exactAlias(normalized, ["what time is it", "current time", "tell me the time"])) {
-    return buildAssistant("time_now", "legacy", "Check the current time", "time-lookup");
+    return buildStockIntent(
+      "time_now",
+      "legacy",
+      "Show the stock clock routine",
+      "intent_clock_time",
+      "Showing the clock."
+    );
   }
 
   if (
@@ -266,7 +272,9 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
       "take a picture of me",
       "take a picture of us",
       "take a photo of me",
-      "take a photo of us"
+      "take a photo of us",
+      "take a selfie",
+      "take a snapshot"
     ])
   ) {
     return buildPhoto("take_picture", "legacy", "Take a photo and sync the latest image");
@@ -274,6 +282,10 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
 
   if (exactAlias(normalized, ["volume down", "lower volume", "turn the volume down"])) {
     return buildAssistant("volume_down", "legacy", "Lower the speaker volume", "volume-down");
+  }
+
+  if (exactAlias(normalized, ["volume up", "raise volume", "turn the volume up"])) {
+    return buildAssistant("volume_up", "legacy", "Raise the speaker volume", "volume-up");
   }
 
   if (exactAlias(normalized, ["volume maximum", "max volume", "turn volume up all the way"])) {
@@ -302,6 +314,10 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     return buildAssistant("be_quiet", "legacy", "Mute audio", "mute-audio");
   }
 
+  if (exactAlias(normalized, ["unmute", "turn sound on", "audio on", "sound on"])) {
+    return buildAssistant("audio_on", "legacy", "Unmute audio", "unmute-audio");
+  }
+
   if (exactAlias(normalized, ["stay there", "hold position", "dont move", "do not move"])) {
     return buildAction("stop", "Hold position", withMeta("stay_there", "legacy", {}));
   }
@@ -325,7 +341,7 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
       "bad_robot",
       "legacy",
       "Play the stock scolding reaction",
-      "intent_imperative_abuse",
+      "intent_imperative_scold",
       "Disappointment registered."
     );
   }
@@ -375,13 +391,23 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     return buildAssistant("stop_exploring", "legacy", "Stop exploring", "stop-exploring");
   }
 
-  if (exactAlias(normalized, ["play blackjack", "play a game"])) {
+  if (exactAlias(normalized, ["play blackjack"])) {
     return buildStockIntent(
       "play_blackjack",
       "legacy",
       "Start stock blackjack",
       "intent_play_blackjack",
       "Starting blackjack."
+    );
+  }
+
+  if (exactAlias(normalized, ["play a game"])) {
+    return buildStockIntent(
+      "play_any_game",
+      "legacy",
+      "Start a built-in game",
+      "intent_play_anygame",
+      "Starting a built-in game."
     );
   }
 
@@ -409,6 +435,26 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     );
   }
 
+  if (exactAlias(normalized, ["fetch your cube", "fetch cube", "bring your cube", "bring me your cube"])) {
+    return buildStockIntent(
+      "fetch_cube",
+      "legacy",
+      "Play the stock fetch cube routine",
+      "intent_imperative_fetchcube",
+      "Fetching the cube."
+    );
+  }
+
+  if (exactAlias(normalized, ["pick up your cube", "pick up cube", "pickup cube"])) {
+    return buildStockIntent(
+      "pickup_cube",
+      "legacy",
+      "Play the stock pick up cube routine",
+      "intent_play_pickupcube",
+      "Picking up the cube."
+    );
+  }
+
   if (exactAlias(normalized, ["do a wheelstand", "wheelstand"])) {
     return buildStockIntent(
       "wheelstand",
@@ -433,13 +479,32 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     return buildPlaceholder("listen_to_music", "legacy", "Listen to music", "Music listening mode enabled.");
   }
 
+  if (exactAlias(normalized, ["play a trick", "do a trick", "show me a trick"])) {
+    return buildStockIntent(
+      "play_any_trick",
+      "legacy",
+      "Play a built-in trick",
+      "intent_play_anytrick",
+      "Playing a trick."
+    );
+  }
+
+  if (exactAlias(normalized, ["how old are you"])) {
+    return buildStockIntent(
+      "character_age",
+      "legacy",
+      "Play the stock age routine",
+      "intent_character_age",
+      "Showing how old I am."
+    );
+  }
+
   if (
     exactAlias(normalized, [
       "fireworks",
       "celebrate",
       "happy new year",
       "happy birthday",
-      "how old are you",
       "happy holidays"
     ])
   ) {
@@ -557,6 +622,14 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
 
   if (exactAlias(normalized, ["dance", "do a dance", "show me a dance"])) {
     return buildAnimation("dance", "custom", "Play a dance routine", "celebrate-spark");
+  }
+
+  if (exactAlias(normalized, ["surprise me", "show me something fun", "do something fun"])) {
+    return buildAnimation("surprise_me", "custom", "Play a surprise trick", "silly-wiggle");
+  }
+
+  if (exactAlias(normalized, ["scan around", "look around", "look around the room"])) {
+    return buildAnimation("scan_around", "custom", "Play a curious scan", "curious-peek");
   }
 
   if (exactAlias(normalized, ["help", "show commands", "what can you do", "list commands"])) {

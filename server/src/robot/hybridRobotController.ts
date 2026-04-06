@@ -6,6 +6,12 @@ import {
   normalizeCommandPrompt
 } from "../services/commandGapService.js";
 import { saveAiMemory as mergeAiMemory } from "../services/aiBrainService.js";
+import {
+  buildChargingProtectionMessage,
+  CHARGING_PROTECTION_RELEASE_PERCENT,
+  isAnimationSafeWhileCharging,
+  isChargingProtectionActive
+} from "../services/chargingProtectionService.js";
 import { createLocalRepairService } from "../services/localRepairService.js";
 import { buildVoiceDiagnostics } from "../services/voiceDiagnosticsService.js";
 import { buildWirePodSetupStatus } from "../services/wirepodSetupService.js";
@@ -160,6 +166,46 @@ export const createHybridRobotController = (options: {
     return log;
   };
 
+  const chargingProtectionEnabled = (robot: RobotStatus) =>
+    isChargingProtectionActive(getSettings(), robot, cachedRobot);
+
+  const applyChargingSafeState = (robot: RobotStatus, currentActivity: string) =>
+    applyRobotState({
+      ...robot,
+      isCharging: robot.isCharging || cachedRobot.isCharging,
+      isDocked: robot.isDocked || cachedRobot.isDocked,
+      mood: robot.isCharging || cachedRobot.isCharging ? "charging" : robot.mood,
+      currentActivity,
+      lastSeen: new Date().toISOString()
+    });
+
+  const blockWhileCharging = (
+    type: string,
+    payload: Record<string, unknown>,
+    robot: RobotStatus,
+    actionLabel: string,
+    currentActivity = "Staying on the charger until nearly full."
+  ) => {
+    busyUntil = 0;
+    busyActivity = currentActivity;
+    return pushLog(
+      makeLog(type, payload, "success", buildChargingProtectionMessage(actionLabel)),
+      applyChargingSafeState(robot, currentActivity)
+    );
+  };
+
+  const buildOfflineFromCached = (message: string) =>
+    applyRobotState({
+      ...buildOfflineRobot(getProfile(), message, "wirepod"),
+      batteryPercent: cachedRobot.batteryPercent,
+      isCharging: cachedRobot.isCharging,
+      isDocked: cachedRobot.isDocked,
+      mood: cachedRobot.isCharging ? "charging" : "sleepy",
+      currentActivity: cachedRobot.isCharging
+        ? "Charging safely while the local brain is offline."
+        : message
+    });
+
   const saveCommandGap = (payload: {
     source: CommandGapRecord["source"];
     prompt: string;
@@ -292,6 +338,14 @@ export const createHybridRobotController = (options: {
     if (!getSettings().serial) {
       suggestions.push("No serial is saved yet. Scan for robots or enter the serial in Settings.");
     }
+    if (cachedRobot.isDocked && !cachedRobot.isCharging && cachedRobot.batteryPercent < CHARGING_PROTECTION_RELEASE_PERCENT) {
+      suggestions.push("Vector is docked but not actively charging. Reseat him on the charger and clean the charging contacts if this keeps happening.");
+    }
+    if (getSettings().protectChargingUntilFull && (cachedRobot.isCharging || cachedRobot.isDocked)) {
+      suggestions.push(
+        `Charging protection is on. Wake, drive, roam, and bigger movement routines stay blocked until Vector is around ${CHARGING_PROTECTION_RELEASE_PERCENT}% or you turn that setting off.`
+      );
+    }
     return suggestions;
   };
 
@@ -394,7 +448,7 @@ export const createHybridRobotController = (options: {
           robotReachable: false,
           note: "WirePod is online, but no authenticated Vector robots were found."
         });
-        cachedRobot = buildOfflineRobot(getProfile(), "Vector brain offline");
+        cachedRobot = buildOfflineFromCached("Vector brain offline");
         return cachedRobot;
       }
 
@@ -409,7 +463,7 @@ export const createHybridRobotController = (options: {
       });
 
       if (!selectedRobot) {
-        cachedRobot = buildOfflineRobot(getProfile(), "Vector brain offline");
+        cachedRobot = buildOfflineFromCached("Vector brain offline");
         return cachedRobot;
       }
 
@@ -448,8 +502,8 @@ export const createHybridRobotController = (options: {
           serial: selectedRobot.esn,
           ipAddress: selectedRobot.ip_address || payload?.ipAddress || "Unavailable",
           batteryPercent: cachedRobot.batteryPercent || 0,
-          isCharging: false,
-          isDocked: false,
+          isCharging: cachedRobot.isCharging,
+          isDocked: cachedRobot.isDocked,
           isConnected: false
         });
 
@@ -470,7 +524,7 @@ export const createHybridRobotController = (options: {
         robotReachable: false,
         note: message
       });
-      cachedRobot = buildOfflineRobot(getProfile(), message, "wirepod");
+      cachedRobot = buildOfflineFromCached(message);
       return cachedRobot;
     }
   };
@@ -851,6 +905,15 @@ export const createHybridRobotController = (options: {
         () => fallback.drive({ direction, speed, durationMs }) as CommandLogRecord,
         `Running ${direction} drive command.`,
         async (serial, robot) => {
+          if (direction !== "stop" && chargingProtectionEnabled(robot)) {
+            return blockWhileCharging(
+              "drive",
+              { direction, speed, durationMs },
+              robot,
+              "Drive commands"
+            );
+          }
+
           const wheelSpeed = Math.round(clampNumber(speed, 10, 100) * 1.9);
           const commands =
             direction === "forward"
@@ -923,7 +986,12 @@ export const createHybridRobotController = (options: {
         "Sending speech to Vector.",
         async (serial, robot) => {
           setBusy("Speaking through Vector.", 9_500);
-          if (!robot.isConnected || robot.mood === "sleepy" || robot.connectionState !== "connected") {
+          const needsWake =
+            !robot.isConnected || robot.mood === "sleepy" || robot.connectionState !== "connected";
+          if (chargingProtectionEnabled(robot)) {
+            return blockWhileCharging("speak", { text }, robot, "Speech requests");
+          }
+          if (needsWake) {
             await wirePod.wake(serial).catch(() => undefined);
             await wait(1800);
           }
@@ -936,12 +1004,31 @@ export const createHybridRobotController = (options: {
       runMockOrThrow(
         () => fallback.animation({ animationId }) as CommandLogRecord,
         "Playing animation.",
-        async (serial) => {
+        async (serial, robot) => {
           const intent =
             animationIntentMap[animationId] ??
             (animationId.startsWith("intent_") || animationId.startsWith("explore_")
               ? animationId
               : "intent_imperative_dance");
+          const needsWake =
+            intent !== "intent_system_sleep" &&
+            (!robot.isConnected || robot.mood === "sleepy" || robot.connectionState !== "connected");
+          if (
+            chargingProtectionEnabled(robot) &&
+            (!isAnimationSafeWhileCharging(intent) || needsWake)
+          ) {
+            return blockWhileCharging(
+              "animation",
+              { animationId, intent },
+              robot,
+              "Movement-heavy animations"
+            );
+          }
+          setBusy("Playing animation.", 6_500);
+          if (needsWake) {
+            await wirePod.wake(serial).catch(() => undefined);
+            await wait(1_200);
+          }
           await wirePod.playAnimation(serial, intent);
           return pushLog(
             makeLog("animation", { animationId, intent }, "success", `Animation intent sent for ${animationId}.`)
@@ -991,6 +1078,10 @@ export const createHybridRobotController = (options: {
         () => fallback.wake() as CommandLogRecord,
         "Waking Vector.",
         async (serial, robot) => {
+          if (chargingProtectionEnabled(robot)) {
+            return blockWhileCharging("wake", { serial }, robot, "Wake requests");
+          }
+
           await wirePod.wake(serial);
           return pushLog(
             makeLog("wake", { serial }, "success", "Wake command sent."),
@@ -1111,6 +1202,10 @@ export const createHybridRobotController = (options: {
       }
 
       return withRealRobot("Capturing a robot photo.", async (serial, robot) => {
+        if (chargingProtectionEnabled(robot)) {
+          throw new Error(buildChargingProtectionMessage("Photo capture"));
+        }
+
         if (robot.isDocked || robot.mood === "sleepy") {
           await wirePod.wake(serial).catch(() => undefined);
           await wait(1200);
@@ -1188,6 +1283,10 @@ export const createHybridRobotController = (options: {
       }
 
       return withRealRobot("Starting roam automation.", async (serial, robot) => {
+        if (chargingProtectionEnabled(robot)) {
+          throw new Error(buildChargingProtectionMessage("Roam automation"));
+        }
+
         const activeSession = getActiveRoamSession();
         if (activeSession && activeSession.status !== "completed") {
           throw new Error("A roam session is already active.");
@@ -1609,13 +1708,30 @@ export const createHybridRobotController = (options: {
           id: crypto.randomUUID(),
           label: "Battery",
           category: "power" as const,
-          status: robot.batteryPercent > 20 ? "pass" : "warn",
+          status:
+            robot.isDocked && !robot.isCharging
+              ? "warn"
+              : robot.batteryPercent > 20
+                ? "pass"
+                : "warn",
           metric: `${robot.batteryPercent}%`,
           details: robot.isCharging
             ? "Vector is currently charging on the dock."
-            : robot.batteryPercent > 20
-              ? "Battery is healthy enough for local movement."
-              : "Battery is low. Dock soon."
+            : robot.isDocked
+              ? "Vector is docked, but the charger is not feeding power right now. Reseat the robot and check the contacts."
+              : robot.batteryPercent > 20
+                ? "Battery is healthy enough for local movement."
+                : "Battery is low. Dock soon."
+        },
+        {
+          id: crypto.randomUUID(),
+          label: "Charging protection",
+          category: "power" as const,
+          status: getSettings().protectChargingUntilFull ? "pass" : "warn",
+          metric: getSettings().protectChargingUntilFull ? "On" : "Off",
+          details: getSettings().protectChargingUntilFull
+            ? `Wake, drive, roam, and larger animations stay blocked on the charger until Vector is around ${CHARGING_PROTECTION_RELEASE_PERCENT}%.`
+            : "Vector can still be woken or moved while on the charger."
         },
         {
           id: crypto.randomUUID(),

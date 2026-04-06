@@ -26,6 +26,7 @@ This project is active and usable, but still evolving.
 - Mock mode is available for testing without a robot
 - WirePod is still required as the local backend bridge
 - Some advanced features are still being refined
+- Current public-testing focus: stable local control, honest status, and an easier first-time setup path
 
 ## Release Path
 
@@ -144,6 +145,10 @@ If you are downloading the source code directly from GitHub instead:
 Use:
 
 - `start-app.bat`
+
+After code changes or local updates, use:
+
+- `refresh-app.bat`
 
 Compatibility launcher:
 
@@ -346,6 +351,22 @@ The app should still allow simple local command preview rules without crashing.
 
 Check whether Vector is still on the charger. Some movement commands can appear limited while docked.
 
+### The robot shows "Docked" but does not keep charging
+
+Check:
+
+1. Vector is seated cleanly on the charger
+2. the charger pins and Vector foot contacts are clean
+3. the app is not being used to wake or drive the robot while it is trying to charge
+
+The app now blocks most wake, movement, photo, and animation actions while charging protection is on, but a weak dock contact or aging battery can still cause real hardware charging problems.
+
+### Weather command works in the app but not from "Hey Vector"
+
+Wake-word weather still depends on a real weather API being configured for WirePod.
+
+You can now configure that from inside the app in `Settings -> Voice weather setup`.
+
 ### Camera page shows no photos
 
 Ask Vector to take a photo, then open `Photos` and use `Retrieve latest photo` or `Sync saved photos`.
@@ -375,6 +396,10 @@ No. It is optional and should only be used when you want a fallback or demo path
 - Advanced vision and object detection are not finished yet
 - This repo is currently Windows-first in its helper scripts
 - Real robot control still depends on local WirePod in Phase 1
+- Live battery updates currently use fast polling, not a true push/socket stream
+- Some classic or community-style commands still use partial implementations or safe fallbacks
+- On-robot weather visuals are best when WirePod weather is configured; otherwise the app falls back to a simpler robot-side cue plus spoken forecast
+- Docking and charging stability can still be affected by physical charger contact or battery health, which software alone cannot fully fix
 
 ## Public Sharing Checklist
 
@@ -385,6 +410,8 @@ Before publishing:
 3. Add screenshots to this README
 4. Verify the launcher still works on a clean machine
 5. Confirm Mock Mode is off in any "real robot" screenshots
+6. Decide whether to share your local IP in screenshots
+7. If you use wake-word weather, set the weather API in-app first so public demos behave consistently
 
 For the longer version, see:
 

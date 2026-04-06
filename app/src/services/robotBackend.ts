@@ -93,6 +93,7 @@ export interface ServerSettings {
   savedWirePodEndpoint: string;
   mockMode: boolean;
   reconnectOnStartup: boolean;
+  protectChargingUntilFull: boolean;
   pollingIntervalMs: number;
   liveUpdateMode: AppSettings["liveUpdateMode"];
   serial: string;
@@ -208,6 +209,7 @@ export const mapSettings = (settings: ServerSettings, fallback: AppSettings): Ap
   savedWirePodEndpoint: settings.savedWirePodEndpoint,
   mockMode: settings.mockMode,
   reconnectOnStartup: settings.reconnectOnStartup,
+  protectChargingUntilFull: settings.protectChargingUntilFull,
   pollingIntervalMs: settings.pollingIntervalMs,
   liveUpdateMode: settings.liveUpdateMode,
   robotSerial: settings.serial

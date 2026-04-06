@@ -20,6 +20,15 @@ const batteryBadgeTone: Record<BatteryStateKey, string> = {
 export const getBatteryState = (
   robot: Pick<Robot, "batteryPercent" | "isCharging" | "isDocked" | "isConnected">
 ): BatteryStatePresentation => {
+  if (robot.isDocked && !robot.isCharging) {
+    return {
+      key: "on-charger",
+      label: "Docked, not charging",
+      detail: "Vector is on the dock, but the charger is not currently feeding power.",
+      badgeClassName: batteryBadgeTone["on-charger"]
+    };
+  }
+
   if (robot.isDocked) {
     return {
       key: "on-charger",

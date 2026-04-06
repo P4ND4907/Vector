@@ -330,6 +330,7 @@ export interface AppSettings {
   savedWirePodEndpoint: string;
   mockMode: boolean;
   reconnectOnStartup: boolean;
+  protectChargingUntilFull: boolean;
   pollingIntervalMs: number;
   liveUpdateMode: LiveUpdateMode;
   robotSerial: string;

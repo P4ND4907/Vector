@@ -1,28 +1,37 @@
-import { useEffect } from 'react';
+import { useEffect } from "react";
 
-function useAutoReconnect(socket) {
-    useEffect(() => {
-        let reconnectInterval;
-        let retryAttempt = 0;
+function useAutoReconnect(socket: WebSocket | null) {
+  useEffect(() => {
+    if (!socket) {
+      return undefined;
+    }
 
-        const handleReconnect = () => {
-            if (socket.readyState === WebSocket.CLOSED) {
-                retryAttempt += 1;
-                const timeout = Math.min(10000, Math.pow(2, retryAttempt) * 1000); // Exponential backoff, max 10 seconds
-                reconnectInterval = setTimeout(() => {
-                    console.log('Attempting to reconnect...');
-                    socket = new WebSocket(socket.url);
-                }, timeout);
-            }
-        };
+    let reconnectTimeout: ReturnType<typeof setTimeout> | undefined;
+    let retryAttempt = 0;
+    let currentSocket = socket;
 
-        socket.addEventListener('close', handleReconnect);
+    const handleReconnect = () => {
+      if (currentSocket.readyState !== WebSocket.CLOSED) {
+        return;
+      }
 
-        return () => {
-            clearTimeout(reconnectInterval);
-            socket.removeEventListener('close', handleReconnect);
-        };
-    }, [socket]);
+      retryAttempt += 1;
+      const timeout = Math.min(10_000, 2 ** retryAttempt * 1_000);
+      reconnectTimeout = setTimeout(() => {
+        console.info("Attempting to reconnect WebSocket...");
+        currentSocket = new WebSocket(currentSocket.url);
+      }, timeout);
+    };
+
+    currentSocket.addEventListener("close", handleReconnect);
+
+    return () => {
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+      currentSocket.removeEventListener("close", handleReconnect);
+    };
+  }, [socket]);
 }
 
 export default useAutoReconnect;

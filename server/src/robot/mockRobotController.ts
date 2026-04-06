@@ -61,6 +61,7 @@ const buildSettings = (): RuntimeSettings => ({
   savedWirePodEndpoint: "",
   mockMode: true,
   reconnectOnStartup: true,
+  protectChargingUntilFull: true,
   pollingIntervalMs: 6000,
   liveUpdateMode: "polling",
   serial: "mock-serial-01"
