@@ -81,20 +81,19 @@ This app is meant to reduce that friction. The goal is a single control center t
 
 ## Screenshots
 
-Add these screenshots before a public post:
+These captures come from the current Windows build.
 
-| Screen | Suggested filename | Notes |
-| --- | --- | --- |
-| Startup connection | `docs/screenshots/startup-connect.png` | Show a calm ready-to-connect state |
-| Main dashboard | `docs/screenshots/dashboard-connected.png` | Use a clean connected robot state |
-| Controls | `docs/screenshots/controls-live.png` | Show large touch-friendly controls |
-| AI commands | `docs/screenshots/ai-commands.png` | Include preview and result feedback |
-| Diagnostics | `docs/screenshots/diagnostics.png` | Show honest health messaging |
-| Camera | `docs/screenshots/camera.png` | Use either synced photos or an empty state |
+| Startup connection | Main dashboard |
+| --- | --- |
+| ![Startup connection](docs/screenshots/startup-connect.png) | ![Main dashboard](docs/screenshots/dashboard-connected.png) |
+| Calm first-run connection flow with honest local-brain status. | Main control center with live-ready status, clear next steps, and quick actions. |
 
-Tip: use one clean connected state and one honest offline state.
+| AI commands | Diagnostics |
+| --- | --- |
+| ![AI commands](docs/screenshots/ai-commands.png) | ![Diagnostics](docs/screenshots/diagnostics-health.png) |
+| Plain-English command composer with previews, examples, and quick status. | Health screen with recovery messaging, voice status, and local troubleshooting context. |
 
-The `docs/screenshots/` folder is already in the repo so these paths can be dropped in directly.
+More screenshots can be added later for photos, routines, and animation workflows, but this gallery now shows the real product instead of placeholders.
 
 ## How It Works
 
