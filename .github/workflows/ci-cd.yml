@@ -1,1 +1,39 @@
-name: CI/CD Workflow\n\non: [push, pull_request]\n\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Checkout code\n        uses: actions/checkout@v2\n\n      - name: Set up Node.js\n        uses: actions/setup-node@v2\n        with:\n          node-version: '16'\n\n      - name: Install dependencies\n        run: npm install\n\n      - name: Run TypeScript checks\n        run: npm run tsc --noEmit\n\n      - name: Run Linter\n        run: npm run lint\n\n      - name: Build\n        run: npm run build\n\n      - name: Upload Build Artifacts\n        uses: actions/upload-artifact@v2\n        with:\n          name: build-artifacts\n          path: dist/\n
+name: CI/CD Workflow
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck app and server
+        run: npm run typecheck
+
+      - name: Build app and server
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vector-control-hub-build
+          path: |
+            app/dist
+            server/dist
+          if-no-files-found: error
