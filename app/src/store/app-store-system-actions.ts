@@ -165,7 +165,12 @@ export const createSystemActions = (
   updateSettings: async (patch) => {
     await runAction("settings", set, async () => {
       const state = get();
-      const result = await robotService.updateSettings(patch, state.settings, state.integration);
+      const result = await robotService.updateSettings(
+        patch,
+        state.settings,
+        state.integration,
+        state.robot
+      );
       set((current) => ({
         settings: {
           ...current.settings,
@@ -173,12 +178,12 @@ export const createSystemActions = (
         },
         integration: result.integration,
         robot: {
-          ...current.robot,
+          ...(result.robot ?? current.robot),
           nickname:
             result.settings.robotNickname ||
-            current.robot.nickname ||
-            current.robot.name,
-          serial: result.settings.robotSerial || current.robot.serial
+            (result.robot ?? current.robot).nickname ||
+            (result.robot ?? current.robot).name,
+          serial: result.settings.robotSerial || (result.robot ?? current.robot).serial
         }
       }));
       return result.integration.note || "Settings updated.";

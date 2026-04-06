@@ -13,6 +13,7 @@ import {
   isChargingProtectionActive
 } from "../services/chargingProtectionService.js";
 import { createLocalRepairService } from "../services/localRepairService.js";
+import { createLocalBridgeManager } from "../services/localBridgeManager.js";
 import { buildVoiceDiagnostics } from "../services/voiceDiagnosticsService.js";
 import { buildWirePodSetupStatus } from "../services/wirepodSetupService.js";
 import { createWirePodService, batteryVoltageToPercent } from "../services/wirepodService.js";
@@ -63,11 +64,15 @@ export const createHybridRobotController = (options: {
   let busyActivity = "Awaiting your next command.";
   let lastHeadAngle = 0;
   let lastLiftHeight = 50;
+  const managedBridge = createLocalBridgeManager({
+    endpoint: options.wirePodBaseUrl
+  });
 
   let lastIntegration: RobotIntegrationInfo = {
     source: store.getState().settings.mockMode ? "mock" : "wirepod",
     wirePodReachable: false,
     wirePodBaseUrl: store.getState().settings.savedWirePodEndpoint || options.wirePodBaseUrl,
+    managedBridge: managedBridge.getCachedStatus(),
     note: store.getState().settings.mockMode ? "Mock mode is active." : "Vector brain offline",
     robotReachable: false,
     mockMode: store.getState().settings.mockMode,
@@ -82,6 +87,10 @@ export const createHybridRobotController = (options: {
     initialEndpoint: store.getState().settings.savedWirePodEndpoint || options.wirePodBaseUrl,
     timeoutMs: options.wirePodTimeoutMs,
     getSettings: () => store.getState().settings,
+    beforeDetectEndpoints: async () => {
+      await managedBridge.ensureRunning().catch(() => managedBridge.getCachedStatus());
+    },
+    getManagedBridgeStatus: () => managedBridge.getCachedStatus(),
     onEndpointResolved: (endpoint, probes) => {
       const currentState = store.getState();
       store.saveSettings({ savedWirePodEndpoint: endpoint });
@@ -96,7 +105,11 @@ export const createHybridRobotController = (options: {
         customEndpoint: currentState.settings.customWirePodEndpoint || undefined,
         lastCheckedAt: new Date().toISOString(),
         probes,
-        note: "WirePod detected."
+        managedBridge: managedBridge.getCachedStatus(),
+        note:
+          managedBridge.getCachedStatus().source === "bundled"
+            ? "Bundled local bridge detected."
+            : "WirePod detected."
       };
     },
     onEndpointFailure: (probes, error) => {
@@ -112,6 +125,7 @@ export const createHybridRobotController = (options: {
         customEndpoint: currentState.settings.customWirePodEndpoint || undefined,
         lastCheckedAt: new Date().toISOString(),
         probes,
+        managedBridge: managedBridge.getCachedStatus(),
         note: error
       };
     }
@@ -313,6 +327,7 @@ export const createHybridRobotController = (options: {
         settings.savedWirePodEndpoint ||
         options.wirePodBaseUrl,
       lastCheckedAt: new Date().toISOString(),
+      managedBridge: managedBridge.getCachedStatus(),
       probes: wirePod.getLastProbes(),
       ...patch
     };
@@ -327,6 +342,9 @@ export const createHybridRobotController = (options: {
     if (!lastIntegration.wirePodReachable) {
       suggestions.push("Vector brain offline. Make sure WirePod is running on this computer.");
       suggestions.push("Open http://127.0.0.1:8080 on this PC to confirm the local WirePod server is alive.");
+      if (lastIntegration.managedBridge.available) {
+        suggestions.push("A bundled local bridge is available. The app will try to start it automatically when needed.");
+      }
     }
     if (lastIntegration.wirePodReachable && !lastIntegration.robotReachable) {
       suggestions.push("WirePod is online, but Vector is not responding on local Wi-Fi yet.");
@@ -405,6 +423,8 @@ export const createHybridRobotController = (options: {
       return fallback.getWirePodSetupStatus() as WirePodSetupStatusRecord;
     }
 
+    await managedBridge.refreshStatus().catch(() => managedBridge.getCachedStatus());
+
     try {
       const [config, sttInfo, sdkInfo] = await Promise.all([
         wirePod.getConfig().catch(() => undefined),
@@ -436,6 +456,8 @@ export const createHybridRobotController = (options: {
       cachedRobot = applyRobotState(fallback.getStatus() as RobotStatus);
       return cachedRobot;
     }
+
+    await managedBridge.refreshStatus().catch(() => managedBridge.getCachedStatus());
 
     try {
       const sdkInfo = await wirePod.getSdkInfo();
@@ -492,7 +514,10 @@ export const createHybridRobotController = (options: {
           wirePodReachable: true,
           robotReachable: true,
           selectedSerial: selectedRobot.esn,
-          note: "Connected through local WirePod."
+          note:
+            managedBridge.getCachedStatus().source === "bundled"
+              ? "Connected through the bundled local bridge."
+              : "Connected through local WirePod."
         });
         return nextRobot;
       } catch (error) {

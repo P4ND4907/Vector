@@ -1,6 +1,22 @@
+import { Capacitor } from "@capacitor/core";
+
 const APP_BACKEND_URL_STORAGE_KEY = "vector-control-hub-api-base-url";
 const STORE_STORAGE_KEY = "vector-control-hub-store";
 const DEFAULT_BACKEND_PORT = 8787;
+const MOBILE_LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+
+const isNativeCapacitorRuntime = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return Capacitor.isNativePlatform();
+};
+
+const shouldRejectNativeLoopbackBackend = (parsed: URL) =>
+  isNativeCapacitorRuntime() &&
+  !import.meta.env.VITE_API_BASE_URL?.trim() &&
+  MOBILE_LOOPBACK_HOSTS.has(parsed.hostname);
 
 const normalizeAppBackendUrl = (value: string) => {
   const trimmed = value.trim();
@@ -11,6 +27,9 @@ const normalizeAppBackendUrl = (value: string) => {
   try {
     const parsed = new URL(trimmed);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return "";
+    }
+    if (shouldRejectNativeLoopbackBackend(parsed)) {
       return "";
     }
 
@@ -70,6 +89,10 @@ export const getDefaultAppBackendUrl = () => {
     return `http://127.0.0.1:${DEFAULT_BACKEND_PORT}`;
   }
 
+  if (isNativeCapacitorRuntime()) {
+    return "";
+  }
+
   if (window.location.protocol === "http:" || window.location.protocol === "https:") {
     return `${window.location.protocol}//${window.location.hostname}:${DEFAULT_BACKEND_PORT}`;
   }
@@ -87,7 +110,7 @@ export const isMobileShellLikeRuntime = () => {
     return false;
   }
 
-  return !window.location.protocol.startsWith("http");
+  return isNativeCapacitorRuntime() || !window.location.protocol.startsWith("http");
 };
 
 export const mobileRuntimeNeedsManualBackendUrl = () =>

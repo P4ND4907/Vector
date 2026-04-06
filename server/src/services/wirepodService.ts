@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import type {
+  ManagedBridgeStatusRecord,
   RuntimeSettings,
   WirePodConnectionMode,
   WirePodProbeResult
@@ -101,12 +102,14 @@ interface WirePodServiceOptions {
   initialEndpoint: string;
   timeoutMs?: number;
   getSettings: () => RuntimeSettings;
+  beforeDetectEndpoints?: () => Promise<void>;
+  getManagedBridgeStatus?: () => ManagedBridgeStatusRecord;
   onEndpointResolved: (endpoint: string, probes: WirePodProbeResult[]) => void;
   onEndpointFailure: (probes: WirePodProbeResult[], error: string) => void;
 }
 
-const unique = (values: string[]) =>
-  values.filter((value, index) => Boolean(value) && values.indexOf(value) === index);
+const unique = (values: Array<string | undefined | null>) =>
+  values.filter((value, index, items): value is string => Boolean(value) && items.indexOf(value) === index);
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -160,6 +163,8 @@ export const createWirePodService = ({
   initialEndpoint,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   getSettings,
+  beforeDetectEndpoints,
+  getManagedBridgeStatus,
   onEndpointResolved,
   onEndpointFailure
 }: WirePodServiceOptions) => {
@@ -286,7 +291,9 @@ export const createWirePodService = ({
 
   const buildCandidates = () => {
     const settings = getSettings();
+    const managedBridgeStatus = getManagedBridgeStatus?.();
     return unique([
+      managedBridgeStatus?.endpoint,
       activeEndpoint,
       settings.savedWirePodEndpoint,
       ...DEFAULT_ENDPOINTS,
@@ -320,6 +327,7 @@ export const createWirePodService = ({
   };
 
   const detectEndpoint = async () => {
+    await beforeDetectEndpoints?.();
     const candidates = buildCandidates();
     const settings = getSettings();
     const probes = await Promise.all(

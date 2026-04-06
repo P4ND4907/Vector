@@ -68,6 +68,13 @@ const integration: IntegrationStatus = {
   source: "mock",
   wirePodReachable: false,
   wirePodBaseUrl: "http://127.0.0.1:8080",
+  managedBridge: {
+    source: "none",
+    available: false,
+    running: false,
+    endpoint: "http://127.0.0.1:8080",
+    note: "Mock mode does not use a live local bridge."
+  },
   selectedSerial: robot.serial,
   note: "Mock mode is active. Connect to WirePod later without changing the UI.",
   robotReachable: true,

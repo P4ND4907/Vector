@@ -7,6 +7,7 @@ import type {
   DiagnosticsSnapshot,
   FeatureFlags,
   IntegrationStatus,
+  ManagedBridgeStatus,
   OptionalFeatureListItem,
   OptionalModules,
   PairRobotInput,
@@ -17,6 +18,7 @@ import type {
   Routine,
   SupportReport
 } from "@/types";
+import { getStoredAppBackendUrl } from "@/lib/runtime-target";
 
 export interface ServerRobot {
   id: string;
@@ -103,6 +105,7 @@ export interface ServerIntegration {
   source: IntegrationStatus["source"];
   wirePodReachable: boolean;
   wirePodBaseUrl: string;
+  managedBridge: ManagedBridgeStatus;
   selectedSerial?: string;
   note?: string;
   robotReachable: boolean;
@@ -203,7 +206,7 @@ export const mapSettings = (settings: ServerSettings, fallback: AppSettings): Ap
   ...fallback,
   theme: settings.theme ?? fallback.theme,
   colorTheme: settings.colorTheme ?? fallback.colorTheme,
-  appBackendUrl: fallback.appBackendUrl,
+  appBackendUrl: getStoredAppBackendUrl() || fallback.appBackendUrl,
   autoReconnect: settings.reconnectOnStartup,
   autoDetectWirePod: settings.autoDetectWirePod,
   customWirePodEndpoint: settings.customWirePodEndpoint,
@@ -223,6 +226,13 @@ export const mapIntegration = (
   source: integration.source ?? fallback?.source ?? "wirepod",
   wirePodReachable: integration.wirePodReachable ?? fallback?.wirePodReachable ?? false,
   wirePodBaseUrl: integration.wirePodBaseUrl || fallback?.wirePodBaseUrl || "http://127.0.0.1:8080",
+  managedBridge: integration.managedBridge ?? fallback?.managedBridge ?? {
+    source: "none",
+    available: false,
+    running: false,
+    endpoint: integration.wirePodBaseUrl || fallback?.wirePodBaseUrl || "http://127.0.0.1:8080",
+    note: "No bundled local bridge was found yet."
+  },
   selectedSerial: integration.selectedSerial ?? fallback?.selectedSerial,
   note: integration.note ?? fallback?.note,
   robotReachable: integration.robotReachable ?? fallback?.robotReachable ?? false,

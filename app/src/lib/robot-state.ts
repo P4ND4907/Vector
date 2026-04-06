@@ -117,9 +117,15 @@ export const getSystemStatusDisplay = (status: Robot["systemStatus"]) => {
   }
 };
 
-export const getBrainStatusLabel = (integration: Pick<IntegrationStatus, "mockMode" | "wirePodReachable">) => {
+export const getBrainStatusLabel = (
+  integration: Pick<IntegrationStatus, "mockMode" | "wirePodReachable" | "managedBridge">
+) => {
   if (integration.mockMode) {
     return "Mock mode";
+  }
+
+  if (integration.managedBridge.source === "bundled" && integration.wirePodReachable) {
+    return "Built-in brain ready";
   }
 
   return integration.wirePodReachable ? "Local brain ready" : "Vector brain offline";

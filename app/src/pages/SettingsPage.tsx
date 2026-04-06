@@ -12,7 +12,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/cn";
 import { formatTimestamp } from "@/lib/format";
 import { getApiBaseUrl } from "@/services/apiClient";
-import { getDefaultAppBackendUrl, isMobileShellLikeRuntime } from "@/lib/runtime-target";
+import {
+  getDefaultAppBackendUrl,
+  getStoredAppBackendUrl,
+  isMobileShellLikeRuntime
+} from "@/lib/runtime-target";
 import { robotService } from "@/services/robotService";
 import { themePresets } from "@/lib/themes";
 import { useAppStore } from "@/store/useAppStore";
@@ -45,7 +49,7 @@ export function SettingsPage() {
   const supportState = useAppStore((state) => state.actionStates.support);
 
   const [customEndpoint, setCustomEndpoint] = useState(settings.customWirePodEndpoint);
-  const [appBackendUrl, setAppBackendUrl] = useState(settings.appBackendUrl);
+  const [appBackendUrl, setAppBackendUrl] = useState(() => settings.appBackendUrl || getStoredAppBackendUrl());
   const [robotSerial, setRobotSerial] = useState(settings.robotSerial);
   const [problemSummary, setProblemSummary] = useState("");
   const [problemDetails, setProblemDetails] = useState("");
@@ -62,7 +66,7 @@ export function SettingsPage() {
 
   useEffect(() => {
     setCustomEndpoint(settings.customWirePodEndpoint);
-    setAppBackendUrl(settings.appBackendUrl);
+    setAppBackendUrl(settings.appBackendUrl || getStoredAppBackendUrl());
     setRobotSerial(settings.robotSerial);
   }, [settings.appBackendUrl, settings.customWirePodEndpoint, settings.robotSerial]);
 

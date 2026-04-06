@@ -20,7 +20,7 @@ import { StartupOverviewCard } from "@/components/startup/StartupOverviewCard";
 import { StartupSetupCard } from "@/components/startup/StartupSetupCard";
 import { formatRelativeTime } from "@/lib/format";
 import { getBatteryState, getBrainStatusLabel, getSystemStatusDisplay } from "@/lib/robot-state";
-import { isMobileShellLikeRuntime } from "@/lib/runtime-target";
+import { getStoredAppBackendUrl, isMobileShellLikeRuntime } from "@/lib/runtime-target";
 import { buildStartupGuide } from "@/lib/startup-onboarding";
 import { robotService } from "@/services/robotService";
 import { useAppStore } from "@/store/useAppStore";
@@ -59,8 +59,20 @@ export function StartupConnectPage() {
   const brainStatus = getBrainStatusLabel(integration);
   const savedTarget = savedProfiles[0];
   const isConnected = robot.isConnected && integration.robotReachable;
+  const localBrainValue = integration.wirePodReachable
+    ? integration.managedBridge.source === "bundled"
+      ? "Built-in"
+      : "Detected"
+    : "Offline";
+  const localBrainDescription = integration.wirePodReachable
+    ? integration.managedBridge.source === "bundled"
+      ? "The app is using its built-in local bridge."
+      : "WirePod answered the backend."
+    : integration.managedBridge.available
+      ? "The built-in bridge is available and will be started automatically."
+      : "The app cannot reach WirePod yet.";
   const mobileRuntimeNeedsBackend =
-    isMobileShellLikeRuntime() && settings.appBackendUrl.trim().length === 0;
+    isMobileShellLikeRuntime() && getStoredAppBackendUrl().trim().length === 0;
 
   const guide = useMemo(
     () =>
@@ -84,6 +96,16 @@ export function StartupConnectPage() {
     scanState.message ||
     integration.note ||
     guide.nextDetail;
+  const completedChecklistCount = guide.checklist.filter((item) => item.done).length;
+  const setupTitle = wirePodSetup?.initialSetupComplete ? "Local setup is ready" : "Local setup still needs one pass";
+  const setupDescription = wirePodSetup
+    ? wirePodSetup.initialSetupComplete
+      ? `WirePod is set to ${wirePodSetup.connectionMode === "escape-pod" ? "Escape Pod" : "IP"} mode with ${wirePodSetup.sttLanguage}.`
+      : "The app can apply the default local setup for you: English (US) plus Escape Pod mode."
+    : "Once the local brain answers, the app can check whether the one-time setup is already done.";
+  const pairingHint = wirePodSetup?.needsRobotPairing
+    ? "Vector still needs the one-time Bluetooth and Wi-Fi handshake through the pairing portal."
+    : "If no robot appears after local setup, open the pairing portal once to finish the first-time handshake.";
 
   useEffect(() => {
     let cancelled = false;
@@ -167,14 +189,14 @@ export function StartupConnectPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-2rem)] px-2 py-4 md:px-4">
-      <div className="mx-auto grid max-w-[1240px] gap-4 xl:grid-cols-[1.04fr_0.96fr]">
+    <div className="min-h-[calc(100vh-2rem)] px-1 py-3 md:px-4">
+      <div className="mx-auto grid max-w-[1240px] gap-3 md:gap-4 xl:grid-cols-[1.04fr_0.96fr]">
         <Card className="overflow-hidden">
-          <CardContent className="grid gap-6 p-6 md:p-8">
-            <div className="space-y-4">
+          <CardContent className="grid gap-5 p-4 sm:p-5 md:gap-6 md:p-8">
+            <div className="space-y-3 md:space-y-4">
               <div className="eyebrow">Startup connection</div>
-              <div className="space-y-3">
-                <h1 className="max-w-2xl text-4xl font-semibold tracking-tight">{guide.headline}</h1>
+              <div className="space-y-2 md:space-y-3">
+                <h1 className="max-w-2xl text-3xl font-semibold tracking-tight md:text-4xl">{guide.headline}</h1>
                 <p className="max-w-2xl text-base text-muted-foreground">{guide.description}</p>
               </div>
             </div>
@@ -199,8 +221,8 @@ export function StartupConnectPage() {
               <StartupOverviewCard
                 title="Local brain"
                 icon={<PlugZap className="h-4 w-4 text-primary" />}
-                value={integration.wirePodReachable ? "Detected" : "Offline"}
-                description={integration.wirePodReachable ? "WirePod answered the backend." : "The app cannot reach WirePod yet."}
+                value={localBrainValue}
+                description={localBrainDescription}
               />
 
               <StartupOverviewCard
@@ -281,7 +303,148 @@ export function StartupConnectPage() {
           </CardContent>
         </Card>
 
-        <div className="grid gap-4">
+        <div className="grid gap-3 md:hidden">
+          <StartupDrawerSection
+            title="Checklist"
+            description={`${completedChecklistCount} of ${guide.checklist.length} startup checks are ready.`}
+          >
+            <div className="space-y-2">
+              {guide.checklist.map((item) => (
+                <div key={item.id} className="flex gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                  <CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 ${item.done ? "text-emerald-300" : "text-muted-foreground/70"}`} />
+                  <div>
+                    <div className="text-sm font-semibold">{item.title}</div>
+                    <div className="mt-1 text-sm text-muted-foreground">{item.detail}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </StartupDrawerSection>
+
+          <StartupDrawerSection
+            title="Setup and pairing"
+            description={wirePodSetup?.initialSetupComplete ? "Local setup is ready." : "Finish local setup and pairing from here."}
+            defaultOpen
+          >
+            <div className="space-y-3">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                <div className="text-sm font-semibold">{setupTitle}</div>
+                <p className="mt-1 text-sm text-muted-foreground">{setupDescription}</p>
+              </div>
+
+              <div className="space-y-2">
+                {guide.firstRunSteps.map((step, index) => (
+                  <div key={step} className="flex gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/[0.05] text-xs font-semibold text-muted-foreground">
+                      {index + 1}
+                    </div>
+                    <div className="text-sm text-muted-foreground">{step}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => void handleFinishLocalSetup()}
+                  disabled={!integration.wirePodReachable || setupLoading || settings.mockMode}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  {setupLoading
+                    ? "Finishing..."
+                    : wirePodSetup?.initialSetupComplete
+                      ? "Re-apply defaults"
+                      : "Finish local setup"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={handleOpenRobotPairingPortal}
+                  disabled={!integration.wirePodReachable || settings.mockMode}
+                >
+                  <ArrowRight className="h-4 w-4" />
+                  Open pairing portal
+                </Button>
+              </div>
+
+              <div className="rounded-2xl border border-dashed border-white/10 p-3 text-sm text-muted-foreground">
+                {pairingHint}
+              </div>
+              {mobileRuntimeNeedsBackend ? (
+                <div className="rounded-2xl border border-dashed border-sky-400/20 bg-sky-400/6 p-3 text-sm text-muted-foreground">
+                  Save the desktop backend URL in Settings first. The pairing tools only work after the phone can reach your LAN backend.
+                </div>
+              ) : null}
+            </div>
+          </StartupDrawerSection>
+
+          <StartupDrawerSection
+            title="Modes and saved target"
+            description={savedTarget ? `${savedTarget.name} is ready to reconnect.` : "Choose between real mode, demo mode, and your last saved robot."}
+          >
+            <div className="space-y-3">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                <div className="text-sm font-semibold">Real robot mode</div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Use this when you want the app to control your actual Vector through the local bridge.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                <div className="text-sm font-semibold">{guide.modeLabel}</div>
+                <p className="mt-1 text-sm text-muted-foreground">{guide.modeDetail}</p>
+              </div>
+
+              {savedTarget ? (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                  <div className="font-semibold">{savedTarget.name}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Serial {savedTarget.serial || "Not saved"} - {savedTarget.ipAddress}
+                  </div>
+                  <div className="mt-3 text-sm text-muted-foreground">
+                    Last paired {formatRelativeTime(savedTarget.lastPairedAt)}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-white/10 p-4 text-sm text-muted-foreground">
+                  No saved robot target yet. Scan once or open pairing to save one.
+                </div>
+              )}
+            </div>
+          </StartupDrawerSection>
+
+          <StartupDrawerSection
+            title="Found on this network"
+            description={topCandidates.length ? "Tap a robot to save it as the startup target." : "Scan the network to refresh this list."}
+          >
+            <div className="space-y-2">
+              {topCandidates.length ? (
+                topCandidates.map((candidate) => (
+                  <button
+                    key={candidate.id}
+                    type="button"
+                    className="w-full rounded-2xl border border-white/10 bg-black/10 p-3 text-left transition hover:border-primary/30"
+                    onClick={() => void updateSettings({ robotSerial: candidate.serial || "" })}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="font-semibold">{candidate.name}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Serial {candidate.serial || "Unknown"} - {candidate.ipAddress}
+                        </div>
+                      </div>
+                      <Badge>{candidate.signalStrength}%</Badge>
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-white/10 p-4 text-sm text-muted-foreground">
+                  No scanned robots yet. Use Scan network to refresh this list.
+                </div>
+              )}
+            </div>
+          </StartupDrawerSection>
+        </div>
+
+        <div className="hidden gap-4 md:grid">
           <Card>
             <CardHeader>
               <CardTitle>Connection checklist</CardTitle>
@@ -410,5 +573,27 @@ export function StartupConnectPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+interface StartupDrawerSectionProps {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}
+
+function StartupDrawerSection({ title, description, children, defaultOpen = false }: StartupDrawerSectionProps) {
+  return (
+    <details open={defaultOpen} className="group rounded-3xl border border-white/10 bg-white/[0.03]">
+      <summary className="flex cursor-pointer list-none items-start justify-between gap-4 p-4">
+        <div>
+          <div className="text-sm font-semibold text-foreground">{title}</div>
+          <div className="mt-1 text-sm text-muted-foreground">{description}</div>
+        </div>
+        <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+      </summary>
+      <div className="border-t border-white/10 px-4 pb-4 pt-3">{children}</div>
+    </details>
   );
 }

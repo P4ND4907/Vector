@@ -22,3 +22,5 @@ pnpm-lock.yaml
 app/android/keystore.properties
 app/android/*.jks
 app/android/*.keystore
+mobile-live-builds
+play-store-assets

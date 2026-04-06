@@ -88,6 +88,17 @@ export interface WirePodProbeResult {
   error?: string;
 }
 
+export type ManagedBridgeSource = "bundled" | "external" | "none";
+
+export interface ManagedBridgeStatusRecord {
+  source: ManagedBridgeSource;
+  available: boolean;
+  running: boolean;
+  endpoint: string;
+  note: string;
+  launchPath?: string;
+}
+
 export interface WirePodWeatherConfigRecord {
   enable: boolean;
   provider: string;
@@ -131,6 +142,7 @@ export interface RobotIntegrationInfo {
   source: RobotConnectionSource;
   wirePodReachable: boolean;
   wirePodBaseUrl: string;
+  managedBridge: ManagedBridgeStatusRecord;
   selectedSerial?: string;
   note?: string;
   robotReachable: boolean;

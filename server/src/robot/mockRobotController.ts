@@ -246,6 +246,13 @@ export const createMockRobotController = (): RobotController => {
     source: "mock",
     wirePodReachable: false,
     wirePodBaseUrl: settings.savedWirePodEndpoint || "http://127.0.0.1:8080",
+    managedBridge: {
+      source: "none",
+      available: false,
+      running: false,
+      endpoint: settings.savedWirePodEndpoint || "http://127.0.0.1:8080",
+      note: "Mock mode does not use a live local bridge."
+    },
     note: "Mock mode is active.",
     robotReachable: true,
     mockMode: true,

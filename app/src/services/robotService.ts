@@ -145,6 +145,7 @@ export const pauseTelemetry = (durationMs: number) => {
 interface SettingsEnvelope {
   settings: AppSettings;
   integration: IntegrationStatus;
+  robot?: Robot;
 }
 
 const buildReconnectPayload = (
@@ -347,6 +348,83 @@ const buildOfflineWirePodState = (
     lastCheckedAt: new Date().toISOString()
   }
 });
+
+const buildLocalSettingsTransition = ({
+  patch,
+  currentSettings,
+  currentIntegration,
+  currentRobot,
+  normalizedBackendUrl
+}: {
+  patch: Partial<AppSettings>;
+  currentSettings: AppSettings;
+  currentIntegration: IntegrationStatus;
+  currentRobot?: Robot;
+  normalizedBackendUrl: string;
+}): Pick<SettingsEnvelope, "integration" | "robot"> | null => {
+  if (patch.mockMode === undefined) {
+    return null;
+  }
+
+  if (patch.mockMode) {
+    const mockSnapshot = cloneSnapshot();
+    return {
+      integration: {
+        ...mockSnapshot.integration,
+        selectedSerial:
+          currentIntegration.selectedSerial ||
+          currentSettings.robotSerial ||
+          currentRobot?.serial ||
+          mockSnapshot.integration.selectedSerial,
+        note: "Mock mode is active."
+      },
+      robot: currentRobot
+        ? {
+            ...mockSnapshot.robot,
+            serial: currentSettings.robotSerial || currentRobot.serial || mockSnapshot.robot.serial,
+            nickname:
+              currentSettings.robotNickname ||
+              currentRobot.nickname ||
+              mockSnapshot.robot.nickname ||
+              mockSnapshot.robot.name,
+            name: currentRobot.name || mockSnapshot.robot.name
+          }
+        : undefined
+    };
+  }
+
+  const needsBackendTarget = mobileRuntimeNeedsManualBackendUrl() && normalizedBackendUrl.length === 0;
+
+  return {
+    integration: {
+      ...currentIntegration,
+      source: "wirepod",
+      mockMode: false,
+      wirePodReachable: needsBackendTarget ? false : currentIntegration.wirePodReachable,
+      robotReachable: false,
+      note: needsBackendTarget ? "Save the desktop backend URL in Settings first." : "Vector brain offline",
+      lastCheckedAt: new Date().toISOString()
+    },
+    robot: currentRobot
+      ? {
+          ...currentRobot,
+          isConnected: false,
+          connectionState: "error",
+          connectionSource: "wirepod",
+          systemStatus:
+            currentRobot.isDocked
+              ? currentRobot.isCharging
+                ? "charging"
+                : "docked"
+              : "offline",
+          currentActivity: needsBackendTarget
+            ? "Waiting for the desktop backend URL."
+            : "Vector brain offline",
+          lastSeen: currentRobot.lastSeen || new Date().toISOString()
+        }
+      : undefined
+  };
+};
 
 export const robotService = {
   async bootstrap(): Promise<AppSnapshot> {
@@ -1102,14 +1180,15 @@ export const robotService = {
   async updateSettings(
     patch: Partial<AppSettings>,
     current: AppSettings,
-    currentIntegration: IntegrationStatus
+    currentIntegration: IntegrationStatus,
+    currentRobot?: Robot
   ): Promise<SettingsEnvelope> {
     clearWirePodSetupCache();
+    const normalizedBackendUrl = persistAppBackendUrl(
+      patch.appBackendUrl === undefined ? current.appBackendUrl : patch.appBackendUrl
+    );
     const localOnlyPatch = {
-      appBackendUrl:
-        patch.appBackendUrl === undefined
-          ? current.appBackendUrl
-          : persistAppBackendUrl(patch.appBackendUrl)
+      appBackendUrl: normalizedBackendUrl
     };
     const backendPatch = {
       theme: patch.theme,
@@ -1123,13 +1202,21 @@ export const robotService = {
       liveUpdateMode: patch.liveUpdateMode,
       serial: patch.robotSerial
     };
+    const localTransition = buildLocalSettingsTransition({
+      patch,
+      currentSettings: current,
+      currentIntegration,
+      currentRobot,
+      normalizedBackendUrl
+    });
 
     const backendPatchHasValues = Object.values(backendPatch).some((value) => value !== undefined);
 
     if (!backendPatchHasValues || shouldApplyMobileLocalOnlySettings(patch)) {
       return {
         settings: { ...current, ...patch, ...localOnlyPatch },
-        integration: currentIntegration
+        integration: localTransition?.integration ?? currentIntegration,
+        robot: localTransition?.robot
       };
     }
 
@@ -1147,13 +1234,15 @@ export const robotService = {
       },
       async () => ({
         settings: { ...current, ...patch, ...localOnlyPatch },
-        integration: {
-          ...cloneSnapshot().integration,
-          mockMode: patch.mockMode ?? cloneSnapshot().integration.mockMode,
-          autoDetectEnabled: patch.autoDetectWirePod ?? cloneSnapshot().integration.autoDetectEnabled,
-          reconnectOnStartup:
-            patch.reconnectOnStartup ?? patch.autoReconnect ?? cloneSnapshot().integration.reconnectOnStartup
-        }
+        integration:
+          localTransition?.integration ?? {
+            ...cloneSnapshot().integration,
+            mockMode: patch.mockMode ?? cloneSnapshot().integration.mockMode,
+            autoDetectEnabled: patch.autoDetectWirePod ?? cloneSnapshot().integration.autoDetectEnabled,
+            reconnectOnStartup:
+              patch.reconnectOnStartup ?? patch.autoReconnect ?? cloneSnapshot().integration.reconnectOnStartup
+          },
+        robot: localTransition?.robot
       })
     );
   },
