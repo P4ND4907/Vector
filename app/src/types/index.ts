@@ -18,6 +18,36 @@ export type AutomationStatus = "idle" | "running" | "paused";
 export type SystemStatus = "ready" | "charging" | "docked" | "busy" | "offline" | "error";
 export type LiveUpdateMode = "polling";
 
+export interface OptionalModule {
+  enabled: boolean;
+  description: string;
+  features: string[];
+  endpoints: string[];
+}
+
+export interface OptionalModules {
+  [key: string]: OptionalModule;
+  dashboard: OptionalModule;
+  aiBrain: OptionalModule;
+  wirepodExpansion: OptionalModule;
+}
+
+export interface OptionalFeatureListItem {
+  name: string;
+  enabled: boolean;
+  value: string;
+}
+
+export interface FeatureFlags {
+  aiBrain: boolean;
+  dashboard: boolean;
+  wirepodExpansion: boolean;
+  liveCamera: boolean;
+  businessNotifications: boolean;
+  memory: boolean;
+  routines: boolean;
+}
+
 export interface RobotProfile {
   id: string;
   serial?: string;
@@ -58,6 +88,27 @@ export interface WirePodProbe {
   ok: boolean;
   latencyMs?: number;
   error?: string;
+}
+
+export interface WirePodWeatherConfig {
+  enable: boolean;
+  provider: string;
+  key: string;
+  unit?: string;
+}
+
+export type WirePodConnectionMode = "escape-pod" | "ip" | "unknown";
+
+export interface WirePodSetupStatus {
+  reachable: boolean;
+  initialSetupComplete: boolean;
+  sttProvider: string;
+  sttLanguage: string;
+  connectionMode: WirePodConnectionMode;
+  port: string;
+  discoveredRobotCount: number;
+  needsRobotPairing: boolean;
+  recommendedNextStep: string;
 }
 
 export interface IntegrationStatus {
@@ -186,6 +237,32 @@ export interface DiagnosticsSnapshot {
   troubleshooting: string[];
 }
 
+export interface RepairStep {
+  id: string;
+  label: string;
+  status: "success" | "warn" | "fail";
+  details: string;
+}
+
+export interface RepairResult {
+  id: string;
+  createdAt: string;
+  overallStatus: "repaired" | "partial" | "failed";
+  summary: string;
+  steps: RepairStep[];
+}
+
+export interface SupportReport {
+  id: string;
+  createdAt: string;
+  summary: string;
+  details: string;
+  contactEmail?: string;
+  robotName: string;
+  integrationNote?: string;
+  repairResult: RepairResult;
+}
+
 export interface RoamEvent {
   id: string;
   createdAt: string;
@@ -269,7 +346,9 @@ export interface AiCommandAction {
     | "volume"
     | "animation"
     | "status"
-    | "roam";
+    | "roam"
+    | "assistant"
+    | "photo";
   label: string;
   params: Record<string, unknown>;
 }
@@ -302,6 +381,9 @@ export interface ActionFeedback {
 export interface AppSnapshot {
   robot: Robot;
   integration: IntegrationStatus;
+  optionalModules: OptionalModules;
+  optionalFeatureList: OptionalFeatureListItem[];
+  featureFlags: FeatureFlags;
   savedProfiles: RobotProfile[];
   routines: Routine[];
   logs: CommandLog[];
@@ -314,6 +396,7 @@ export interface AppSnapshot {
   roamSessions: RoamSession[];
   automationControl: AutomationControl;
   availableRobots: PairingCandidate[];
+  supportReports: SupportReport[];
   queuedAnimations: string[];
   driveState: DriveState;
   settings: AppSettings;

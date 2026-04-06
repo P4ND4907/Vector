@@ -1,18 +1,25 @@
 import { Buffer } from "node:buffer";
 import type {
+  AiMemoryRecord,
   AutomationControlRecord,
   CameraImageAsset,
   CameraSnapshotRecord,
   CameraSyncResult,
+  CommandGapRecord,
   CommandLogRecord,
   DiagnosticReportRecord,
   DiscoveredRobot,
+  RepairResultRecord,
   RobotController,
   RobotIntegrationInfo,
   RobotStatus,
   RoamSessionRecord,
   RoutineRecord,
-  RuntimeSettings
+  RuntimeSettings,
+  SupportReportRecord,
+  WirePodSetupStatusRecord,
+  WirePodWeatherConfigRecord,
+  VoiceDiagnosticsRecord
 } from "./types.js";
 
 const makeId = () => crypto.randomUUID();
@@ -150,8 +157,52 @@ const createDiagnosticsReport = (robot: RobotStatus): DiagnosticReportRecord => 
       status: "pass",
       metric: "Available",
       details: "Mock movement commands are ready."
+    },
+    {
+      id: makeId(),
+      label: "Wake word",
+      category: "audio",
+      status: "pass",
+      metric: "Hey Vector",
+      details: "Mock mode keeps the voice defaults on a healthy baseline."
+    },
+    {
+      id: makeId(),
+      label: "Speech locale",
+      category: "audio",
+      status: "pass",
+      metric: "en-US",
+      details: "Mock voice testing is using English (US)."
+    },
+    {
+      id: makeId(),
+      label: "Speaker volume",
+      category: "audio",
+      status: "pass",
+      metric: `${robot.volume}/5`,
+      details: "Mock speaker volume is high enough for testing."
+    },
+    {
+      id: makeId(),
+      label: "Voice pipeline",
+      category: "audio",
+      status: "pass",
+      metric: "intent_time",
+      details: "Mock mode is simulating a recent successful voice intent."
     }
   ]
+});
+
+const createVoiceDiagnostics = (robot: RobotStatus): VoiceDiagnosticsRecord => ({
+  wakeWordMode: "hey-vector",
+  locale: "en-US",
+  volume: robot.volume,
+  lastIntent: "intent_time",
+  lastTranscription: "what time is it",
+  lastHeardAt: new Date().toISOString(),
+  status: "healthy",
+  summary: "Mock mode is simulating a healthy Hey Vector setup.",
+  troubleshooting: ["Turn off mock mode when you are ready to test the real robot microphone path."]
 });
 
 export const createMockRobotController = (): RobotController => {
@@ -168,6 +219,9 @@ export const createMockRobotController = (): RobotController => {
     autoDockThreshold: 24
   };
   let roamSessions: RoamSessionRecord[] = [];
+  let supportReports: SupportReportRecord[] = [];
+  let aiMemory: AiMemoryRecord[] = [];
+  let commandGaps: CommandGapRecord[] = [];
   const discoveredRobots: DiscoveredRobot[] = [
     {
       id: "mock-serial-01",
@@ -199,6 +253,12 @@ export const createMockRobotController = (): RobotController => {
     customEndpoint: settings.customWirePodEndpoint || undefined,
     lastCheckedAt: new Date().toISOString(),
     probes: []
+  };
+  let wirePodWeatherConfig: WirePodWeatherConfigRecord = {
+    enable: false,
+    provider: "",
+    key: "",
+    unit: ""
   };
 
   const pushLog = (log: CommandLogRecord) => {
@@ -345,6 +405,163 @@ export const createMockRobotController = (): RobotController => {
         contentType: "image/svg+xml",
         buffer: Buffer.from(decodeURIComponent(encoded), "utf8")
       };
+    },
+    deletePhoto: (photoId) => {
+      const before = snapshots.length;
+      snapshots = snapshots.filter((item) => item.id !== photoId && item.remoteId !== photoId);
+      const deletedCount = before - snapshots.length;
+      pushLog(
+        makeLog(
+          "photo-delete",
+          { photoId },
+          deletedCount ? "success" : "error",
+          deletedCount ? "Mock photo removed." : "That photo could not be found."
+        )
+      );
+      return {
+        snapshots,
+        latestSnapshot: snapshots[0],
+        syncedCount: deletedCount,
+        note: deletedCount ? "Mock photo removed." : "That photo could not be found."
+      } satisfies CameraSyncResult;
+    },
+    getVoiceDiagnostics: () => createVoiceDiagnostics(robot),
+    repairVoiceSetup: () =>
+      pushLog(
+        makeLog(
+          "voice-repair",
+          { wakeWordMode: "hey-vector", locale: "en-US", volume: robot.volume },
+          "success",
+          "Mock WirePod voice defaults refreshed for testing."
+        )
+      ),
+    getWirePodSetupStatus: (): WirePodSetupStatusRecord => ({
+      reachable: false,
+      initialSetupComplete: false,
+      sttProvider: "vosk",
+      sttLanguage: "en-US",
+      connectionMode: "escape-pod",
+      port: "443",
+      discoveredRobotCount: discoveredRobots.length,
+      needsRobotPairing: false,
+      recommendedNextStep: "Turn off mock mode when you are ready to set up the real local WirePod bridge."
+    }),
+    finishWirePodSetup: ({ language, connectionMode, port }): WirePodSetupStatusRecord => ({
+      reachable: false,
+      initialSetupComplete: true,
+      sttProvider: "vosk",
+      sttLanguage: language?.trim() || "en-US",
+      connectionMode: connectionMode || "escape-pod",
+      port: port?.trim() || "443",
+      discoveredRobotCount: discoveredRobots.length,
+      needsRobotPairing: false,
+      recommendedNextStep: "Mock mode marked the local setup step as complete for UI testing."
+    }),
+    getWirePodWeatherConfig: () => wirePodWeatherConfig,
+    setWirePodWeatherConfig: ({ provider, key, unit }) => {
+      wirePodWeatherConfig = {
+        enable: Boolean(provider.trim() && key.trim()),
+        provider: provider.trim(),
+        key: key.trim(),
+        unit: unit?.trim()
+      };
+      return wirePodWeatherConfig;
+    },
+    quickRepair: (): RepairResultRecord => {
+      const result: RepairResultRecord = {
+        id: makeId(),
+        createdAt: new Date().toISOString(),
+        overallStatus: "repaired",
+        summary: "Mock quick repair refreshed the local test state.",
+        steps: [
+          {
+            id: makeId(),
+            label: "Mock mode",
+            status: "success",
+            details: "No live repair was needed while mock mode is active."
+          }
+        ]
+      };
+      pushLog(makeLog("quick-repair", { mode: "mock" }, "success", result.summary));
+      return result;
+    },
+    getSupportReports: () => supportReports,
+    getAiMemory: () => aiMemory,
+    saveAiMemory: ({ key, value }) => {
+      const now = new Date().toISOString();
+      const existing = aiMemory.find((item) => item.key.toLowerCase() === key.trim().toLowerCase());
+
+      if (existing) {
+        aiMemory = aiMemory.map((item) =>
+          item.key.toLowerCase() === key.trim().toLowerCase()
+            ? { ...item, key: key.trim(), value: value.trim(), updatedAt: now }
+            : item
+        );
+      } else {
+        aiMemory = [
+          {
+            key: key.trim(),
+            value: value.trim(),
+            createdAt: now,
+            updatedAt: now
+          },
+          ...aiMemory
+        ].slice(0, 100);
+      }
+
+      return aiMemory;
+    },
+    getCommandGaps: () => commandGaps,
+    recordCommandGap: ({ source, prompt, normalizedPrompt, category, note, suggestedArea, heardAt, matchedIntent }) => {
+      const record: CommandGapRecord = {
+        id: makeId(),
+        createdAt: new Date().toISOString(),
+        source,
+        prompt,
+        normalizedPrompt:
+          normalizedPrompt ||
+          prompt
+            .toLowerCase()
+            .trim()
+            .replace(/[^\w\s]/g, " ")
+            .replace(/\s+/g, " "),
+        category,
+        note,
+        suggestedArea,
+        heardAt,
+        matchedIntent
+      };
+      commandGaps = [record, ...commandGaps].slice(0, 120);
+      return record;
+    },
+    reportProblem: ({ summary, details, contactEmail }) => {
+      const repairResult: RepairResultRecord = {
+        id: makeId(),
+        createdAt: new Date().toISOString(),
+        overallStatus: "repaired",
+        summary: "Mock repair completed before saving the problem report.",
+        steps: [
+          {
+            id: makeId(),
+            label: "Mock mode",
+            status: "success",
+            details: "The local mock stack was already healthy."
+          }
+        ]
+      };
+      const report: SupportReportRecord = {
+        id: makeId(),
+        createdAt: new Date().toISOString(),
+        summary,
+        details,
+        contactEmail,
+        robotName: robot.nickname ?? robot.name,
+        integrationNote: integrationInfo.note,
+        repairResult
+      };
+      supportReports = [report, ...supportReports].slice(0, 40);
+      pushLog(makeLog("support-report", { summary }, "success", "Mock problem report saved locally."));
+      return report;
     },
     runDiagnostics: () => createDiagnosticsReport(robot),
     getAutomationControl: () => automationControl,

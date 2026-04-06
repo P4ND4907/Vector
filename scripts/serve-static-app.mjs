@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
 
@@ -12,10 +13,6 @@ const getArg = (name, fallback) => {
 
   return args[index + 1];
 };
-
-const root = path.resolve(getArg("--root", "app/dist"));
-const host = getArg("--host", "127.0.0.1");
-const port = Number(getArg("--port", "4173"));
 
 const mimeTypes = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -30,7 +27,7 @@ const mimeTypes = new Map([
   [".ico", "image/x-icon"]
 ]);
 
-const normalizeRequestPath = (requestUrl) => {
+const normalizeRequestPath = (requestUrl, host, port) => {
   const url = new URL(requestUrl, `http://${host}:${port}`);
   const pathname = decodeURIComponent(url.pathname);
 
@@ -57,35 +54,57 @@ const sendFile = async (filePath, response) => {
   response.end(body);
 };
 
-const server = createServer(async (request, response) => {
-  try {
-    const relativePath = normalizeRequestPath(request.url ?? "/");
-    const requestedPath = safeJoin(root, relativePath);
+export const startStaticServer = ({
+  root = "app/dist",
+  host = "127.0.0.1",
+  port = 4173
+} = {}) => {
+  const resolvedRoot = path.resolve(root);
 
-    if (requestedPath) {
-      try {
-        const stats = await fs.stat(requestedPath);
-        if (stats.isDirectory()) {
-          await sendFile(path.join(requestedPath, "index.html"), response);
+  const server = createServer(async (request, response) => {
+    try {
+      const relativePath = normalizeRequestPath(request.url ?? "/", host, port);
+      const requestedPath = safeJoin(resolvedRoot, relativePath);
+
+      if (requestedPath) {
+        try {
+          const stats = await fs.stat(requestedPath);
+          if (stats.isDirectory()) {
+            await sendFile(path.join(requestedPath, "index.html"), response);
+            return;
+          }
+
+          await sendFile(requestedPath, response);
           return;
+        } catch {
+          // Fall through to SPA index.
         }
-
-        await sendFile(requestedPath, response);
-        return;
-      } catch {
-        // Fall through to SPA index.
       }
+
+      await sendFile(path.join(resolvedRoot, "index.html"), response);
+    } catch (error) {
+      response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end(`Vector Control Hub static server error: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
+  });
 
-    await sendFile(path.join(root, "index.html"), response);
-  } catch (error) {
-    response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
-    response.end(`Vector Control Hub static server error: ${error instanceof Error ? error.message : "Unknown error"}`);
-  }
-});
+  return new Promise((resolve) => {
+    server.listen(port, host, () => {
+      console.log(`Vector Control Hub static server running at http://${host}:${port}/`);
+      console.log(`Serving files from ${resolvedRoot}`);
+      resolve(server);
+    });
+  });
+};
 
-server.listen(port, host, () => {
-  console.log(`Vector Control Hub static server running at http://${host}:${port}/`);
-  console.log(`Serving files from ${root}`);
-});
+const normalizedDirectRunPath = process.argv[1]
+  ? path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1])
+  : false;
 
+if (normalizedDirectRunPath) {
+  await startStaticServer({
+    root: getArg("--root", "app/dist"),
+    host: getArg("--host", "127.0.0.1"),
+    port: Number(getArg("--port", "4173"))
+  });
+}

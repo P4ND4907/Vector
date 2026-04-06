@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import type {
   RuntimeSettings,
+  WirePodConnectionMode,
   WirePodProbeResult
 } from "../robot/types.js";
 
@@ -16,6 +17,7 @@ const DEFAULT_ENDPOINTS = ["http://localhost:8080", "http://127.0.0.1:8080"];
 // This file is the single source of truth for WirePod integration assumptions.
 const ROUTES = {
   sdkInfo: "/api-sdk/get_sdk_info",
+  sdkSettings: "/api-sdk/get_sdk_settings",
   assumeBehaviorControl: "/api-sdk/assume_behavior_control",
   releaseBehaviorControl: "/api-sdk/release_behavior_control",
   sayText: "/api-sdk/say_text",
@@ -26,10 +28,23 @@ const ROUTES = {
   cloudIntent: "/api-sdk/cloud_intent",
   triggerWakeWord: "/api-sdk/trigger_wake_word",
   volume: "/api-sdk/volume",
+  locale: "/api-sdk/locale",
+  buttonHeyVector: "/api-sdk/button_hey_vector",
   getImageIds: "/api-sdk/get_image_ids",
   getImage: "/api-sdk/get_image",
   getImageThumb: "/api-sdk/get_image_thumb",
-  camStream: "/cam-stream"
+  deleteImage: "/api-sdk/delete_image",
+  camStream: "/cam-stream",
+  getLogs: "/api/get_logs",
+  getDebugLogs: "/api/get_debug_logs",
+  getWeatherApi: "/api/get_weather_api",
+  setWeatherApi: "/api/set_weather_api",
+  getConfig: "/api/get_config",
+  getSttInfo: "/api/get_stt_info",
+  setSttInfo: "/api/set_stt_info",
+  getDownloadStatus: "/api/get_download_status",
+  useEscapePod: "/api-chipper/use_ep",
+  useIp: "/api-chipper/use_ip"
 } as const;
 
 export interface WirePodRobotRecord {
@@ -52,6 +67,36 @@ export interface WirePodBatteryStatus {
   suggested_charger_sec?: number;
 }
 
+export interface WirePodSdkSettings {
+  button_wakeword?: number;
+  locale?: string;
+  master_volume?: number;
+}
+
+export interface WirePodWeatherApiConfig {
+  enable: boolean;
+  provider: string;
+  key: string;
+  unit?: string;
+}
+
+export interface WirePodConfig {
+  STT?: {
+    provider?: string;
+    language?: string;
+  };
+  server?: {
+    epconfig?: boolean;
+    port?: string;
+  };
+  pastinitialsetup?: boolean;
+}
+
+export interface WirePodSttInfo {
+  provider?: string;
+  language?: string;
+}
+
 interface WirePodServiceOptions {
   initialEndpoint: string;
   timeoutMs?: number;
@@ -65,7 +110,7 @@ const unique = (values: string[]) =>
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const getSpeechHoldMs = (text: string) => Math.min(6_000, Math.max(3_500, text.trim().length * 80));
+const getSpeechHoldMs = (text: string) => Math.min(10_000, Math.max(5_500, text.trim().length * 95));
 
 const normalizeFetchError = (error: unknown, fallbackMessage: string) => {
   if (!(error instanceof Error)) {
@@ -215,6 +260,28 @@ export const createWirePodService = ({
     } catch {
       return requestJson<T>(endpoint, path, { method: "POST" }, requestTimeoutMs);
     }
+  };
+
+  const waitForDownloadStatus = async (endpoint: string) => {
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      await sleep(500);
+      const status = await requestText(
+        endpoint,
+        ROUTES.getDownloadStatus,
+        undefined,
+        Math.min(timeoutMs, BATTERY_TIMEOUT_MS)
+      ).catch(() => "Language model download still in progress.");
+
+      if (status.includes("success")) {
+        return status;
+      }
+
+      if (status.includes("error")) {
+        throw new Error(status);
+      }
+    }
+
+    throw new Error("Language model download is taking longer than expected.");
   };
 
   const buildCandidates = () => {
@@ -385,6 +452,20 @@ export const createWirePodService = ({
       `${route}?speed=${speed}&serial=${encodeURIComponent(serial)}`
     );
 
+  const requestSayText = async (
+    endpoint: string,
+    serial: string,
+    text: string
+  ) => {
+    const queryPath = `${ROUTES.sayText}?text=${encodeURIComponent(text)}&serial=${encodeURIComponent(serial)}`;
+
+    try {
+      return await requestText(endpoint, queryPath, undefined, timeoutMs);
+    } catch {
+      return requestSdkPostForm(endpoint, queryPath, timeoutMs);
+    }
+  };
+
   return {
     detectEndpoint,
     getActiveEndpoint: () => activeEndpoint,
@@ -421,12 +502,131 @@ export const createWirePodService = ({
         );
       }
     },
+    async getSdkSettings(serial: string) {
+      const endpoint = await ensureEndpoint();
+      return requestSdkJson<WirePodSdkSettings>(
+        endpoint,
+        `${ROUTES.sdkSettings}?serial=${encodeURIComponent(serial)}`,
+        Math.min(timeoutMs, BATTERY_TIMEOUT_MS)
+      );
+    },
+    async getLogs() {
+      const endpoint = await ensureEndpoint();
+      return requestText(endpoint, ROUTES.getLogs, undefined, Math.min(timeoutMs, BATTERY_TIMEOUT_MS));
+    },
+    async getDebugLogs() {
+      const endpoint = await ensureEndpoint();
+      return requestText(endpoint, ROUTES.getDebugLogs, undefined, Math.min(timeoutMs, BATTERY_TIMEOUT_MS));
+    },
+    async getConfig() {
+      const endpoint = await ensureEndpoint();
+      return requestJson<WirePodConfig>(
+        endpoint,
+        ROUTES.getConfig,
+        undefined,
+        Math.min(timeoutMs, BATTERY_TIMEOUT_MS)
+      );
+    },
+    async getSttInfo() {
+      const endpoint = await ensureEndpoint();
+      return requestJson<WirePodSttInfo>(
+        endpoint,
+        ROUTES.getSttInfo,
+        undefined,
+        Math.min(timeoutMs, BATTERY_TIMEOUT_MS)
+      );
+    },
+    async finishInitialSetup({
+      language = "en-US",
+      connectionMode = "escape-pod",
+      port = "443"
+    }: {
+      language?: string;
+      connectionMode?: Exclude<WirePodConnectionMode, "unknown">;
+      port?: string;
+    }) {
+      const endpoint = await ensureEndpoint();
+      const languageResponse = await rawRequest(
+        endpoint,
+        ROUTES.setSttInfo,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ language })
+        },
+        timeoutMs
+      ).then((response) => response.text());
+
+      if (languageResponse.includes("downloading")) {
+        await waitForDownloadStatus(endpoint);
+      } else if (languageResponse.includes("error")) {
+        throw new Error(languageResponse);
+      }
+
+      const connectionPath =
+        connectionMode === "ip"
+          ? `${ROUTES.useIp}?port=${encodeURIComponent(port || "443")}`
+          : ROUTES.useEscapePod;
+
+      await requestText(endpoint, connectionPath, undefined, timeoutMs);
+      await sleep(750);
+
+      return {
+        config: await requestJson<WirePodConfig>(
+          endpoint,
+          ROUTES.getConfig,
+          undefined,
+          Math.min(timeoutMs, BATTERY_TIMEOUT_MS)
+        ),
+        stt: await requestJson<WirePodSttInfo>(
+          endpoint,
+          ROUTES.getSttInfo,
+          undefined,
+          Math.min(timeoutMs, BATTERY_TIMEOUT_MS)
+        )
+      };
+    },
+    async getWeatherApiConfig() {
+      const endpoint = await ensureEndpoint();
+      return requestJson<WirePodWeatherApiConfig>(
+        endpoint,
+        ROUTES.getWeatherApi,
+        undefined,
+        Math.min(timeoutMs, BATTERY_TIMEOUT_MS)
+      );
+    },
+    async setWeatherApiConfig(config: { provider: string; key: string; unit?: string }) {
+      const endpoint = await ensureEndpoint();
+      await rawRequest(
+        endpoint,
+        ROUTES.setWeatherApi,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            provider: config.provider,
+            key: config.key,
+            unit: config.unit
+          })
+        },
+        Math.min(timeoutMs, BATTERY_TIMEOUT_MS)
+      );
+
+      return requestJson<WirePodWeatherApiConfig>(
+        endpoint,
+        ROUTES.getWeatherApi,
+        undefined,
+        Math.min(timeoutMs, BATTERY_TIMEOUT_MS)
+      );
+    },
     async sayText(serial: string, text: string) {
       return withBehaviorControl(serial, async (endpoint) => {
-        await requestSdkPostForm(
-          endpoint,
-          `${ROUTES.sayText}?text=${encodeURIComponent(text)}&serial=${encodeURIComponent(serial)}`
-        );
+        await sleep(850);
+        await requestSayText(endpoint, serial, text);
         await sleep(getSpeechHoldMs(text));
       });
     },
@@ -463,12 +663,15 @@ export const createWirePodService = ({
       });
     },
     async dock(serial: string) {
-      return withBehaviorControl(serial, async (endpoint) =>
-        requestSdkText(
+      return withBehaviorControl(serial, async (endpoint) => {
+        await requestMoveWheels(endpoint, serial, 0, 0).catch(() => undefined);
+        await sleep(250);
+        await requestSdkText(
           endpoint,
           `${ROUTES.cloudIntent}?intent=${encodeURIComponent("intent_system_charger")}&serial=${encodeURIComponent(serial)}`
-        )
-      );
+        );
+        await sleep(700);
+      });
     },
     async takePhoto(serial: string) {
       return withBehaviorControl(serial, async (endpoint) =>
@@ -509,6 +712,20 @@ export const createWirePodService = ({
         )
       );
     },
+    async setLocale(serial: string, locale: string) {
+      const endpoint = await ensureEndpoint();
+      return requestSdkPostForm(
+        endpoint,
+        `${ROUTES.locale}?locale=${encodeURIComponent(locale)}&serial=${encodeURIComponent(serial)}`
+      );
+    },
+    async setButtonHeyVector(serial: string) {
+      const endpoint = await ensureEndpoint();
+      return requestSdkPostForm(
+        endpoint,
+        `${ROUTES.buttonHeyVector}?serial=${encodeURIComponent(serial)}`
+      );
+    },
     async getImageIds(serial: string) {
       const endpoint = await ensureEndpoint();
       const raw = await requestSdkText(
@@ -533,6 +750,13 @@ export const createWirePodService = ({
       return requestBinary(
         endpoint,
         `${route}?serial=${encodeURIComponent(serial)}&id=${encodeURIComponent(photoId)}`
+      );
+    },
+    async deleteImage(serial: string, photoId: string) {
+      const endpoint = await ensureEndpoint();
+      return requestSdkPostForm(
+        endpoint,
+        `${ROUTES.deleteImage}?serial=${encodeURIComponent(serial)}&id=${encodeURIComponent(photoId)}`
       );
     },
     async getCameraStreamUrl(serial: string) {

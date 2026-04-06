@@ -6,6 +6,7 @@ export const animationIntentMap: Record<string, string> = {
   "greeting-wave": "intent_imperative_dance",
   "silly-wiggle": "intent_imperative_dance",
   "celebrate-spark": "intent_imperative_dance",
+  "weather-report": "intent_weather_extend",
   "curious-peek": "explore_start",
   "idle-scan": "explore_start",
   "sleepy-yawn": "intent_system_sleep"

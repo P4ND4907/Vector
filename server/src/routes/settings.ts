@@ -14,6 +14,18 @@ const settingsPatchSchema = z.object({
   serial: z.string().optional()
 });
 
+const wirePodWeatherSchema = z.object({
+  provider: z.string().default(""),
+  key: z.string().default(""),
+  unit: z.string().optional()
+});
+
+const wirePodSetupSchema = z.object({
+  language: z.string().optional(),
+  connectionMode: z.enum(["escape-pod", "ip"]).optional(),
+  port: z.string().optional()
+});
+
 export const createSettingsRouter = (controller: RobotController) => {
   const router = Router();
 
@@ -29,6 +41,32 @@ export const createSettingsRouter = (controller: RobotController) => {
     response.json({
       settings: await controller.updateSettings(patch),
       integration: await controller.getIntegrationInfo()
+    });
+  });
+
+  router.get("/wirepod/weather", async (_request: Request, response: Response) => {
+    response.json({
+      weather: await controller.getWirePodWeatherConfig()
+    });
+  });
+
+  router.post("/wirepod/weather", async (request: Request, response: Response) => {
+    const payload = wirePodWeatherSchema.parse(request.body ?? {});
+    response.json({
+      weather: await controller.setWirePodWeatherConfig(payload)
+    });
+  });
+
+  router.get("/wirepod/setup", async (_request: Request, response: Response) => {
+    response.json({
+      setup: await controller.getWirePodSetupStatus()
+    });
+  });
+
+  router.post("/wirepod/setup", async (request: Request, response: Response) => {
+    const payload = wirePodSetupSchema.parse(request.body ?? {});
+    response.json({
+      setup: await controller.finishWirePodSetup(payload)
     });
   });
 

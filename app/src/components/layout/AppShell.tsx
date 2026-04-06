@@ -1,21 +1,54 @@
-import { useMemo } from "react";
+import { Suspense, lazy, useMemo } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { DesktopSidebarPanels, PinnedStatusCard, ToastRail } from "@/components/layout/app-shell-chrome";
 import { DesktopNav, MobileNav } from "@/components/layout/app-shell-nav";
-import { AiCommandsPage } from "@/pages/AiCommandsPage";
-import { AnimationsPage } from "@/pages/AnimationsPage";
-import { AutomationControlPage } from "@/pages/AutomationControlPage";
-import { CameraPage } from "@/pages/CameraPage";
-import { DashboardPage } from "@/pages/DashboardPage";
-import { DiagnosticsPage } from "@/pages/DiagnosticsPage";
-import { DrivePage } from "@/pages/DrivePage";
-import { NotificationsPage } from "@/pages/NotificationsPage";
-import { PairingPage } from "@/pages/PairingPage";
-import { RoutinesPage } from "@/pages/RoutinesPage";
-import { SettingsPage } from "@/pages/SettingsPage";
-import { SpeechPage } from "@/pages/SpeechPage";
 import { StartupConnectPage } from "@/pages/StartupConnectPage";
 import { useAppStore } from "@/store/useAppStore";
+
+const DashboardPage = lazy(() =>
+  import("@/pages/DashboardPage").then((module) => ({ default: module.DashboardPage }))
+);
+const PairingPage = lazy(() =>
+  import("@/pages/PairingPage").then((module) => ({ default: module.PairingPage }))
+);
+const DrivePage = lazy(() =>
+  import("@/pages/DrivePage").then((module) => ({ default: module.DrivePage }))
+);
+const AiCommandsPage = lazy(() =>
+  import("@/pages/AiCommandsPage").then((module) => ({ default: module.AiCommandsPage }))
+);
+const SpeechPage = lazy(() =>
+  import("@/pages/SpeechPage").then((module) => ({ default: module.SpeechPage }))
+);
+const AnimationsPage = lazy(() =>
+  import("@/pages/AnimationsPage").then((module) => ({ default: module.AnimationsPage }))
+);
+const DiagnosticsPage = lazy(() =>
+  import("@/pages/DiagnosticsPage").then((module) => ({ default: module.DiagnosticsPage }))
+);
+const AutomationControlPage = lazy(() =>
+  import("@/pages/AutomationControlPage").then((module) => ({ default: module.AutomationControlPage }))
+);
+const CameraPage = lazy(() =>
+  import("@/pages/CameraPage").then((module) => ({ default: module.CameraPage }))
+);
+const RoutinesPage = lazy(() =>
+  import("@/pages/RoutinesPage").then((module) => ({ default: module.RoutinesPage }))
+);
+const NotificationsPage = lazy(() =>
+  import("@/pages/NotificationsPage").then((module) => ({ default: module.NotificationsPage }))
+);
+const SettingsPage = lazy(() =>
+  import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage }))
+);
+
+function PageFallback() {
+  return (
+    <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-6 text-sm text-muted-foreground">
+      Loading the next panel...
+    </div>
+  );
+}
 
 export function AppShell() {
   const location = useLocation();
@@ -36,10 +69,12 @@ export function AppShell() {
   if (isStartupRoute) {
     return (
       <div className="min-h-screen px-4 pb-8 pt-4 md:px-6">
-        <Routes>
-          <Route path="/" element={<StartupConnectPage />} />
-          <Route path="/startup" element={<StartupConnectPage />} />
-        </Routes>
+        <Suspense fallback={<PageFallback />}>
+          <Routes>
+            <Route path="/" element={<StartupConnectPage />} />
+            <Route path="/startup" element={<StartupConnectPage />} />
+          </Routes>
+        </Suspense>
 
         <ToastRail toasts={toasts} dismissToast={dismissToast} />
       </div>
@@ -56,21 +91,23 @@ export function AppShell() {
         <main className="min-w-0 space-y-4">
           <PinnedStatusCard robot={robot} integration={integration} />
 
-          <Routes>
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/startup" element={<StartupConnectPage />} />
-            <Route path="/pairing" element={<PairingPage />} />
-            <Route path="/drive" element={<DrivePage />} />
-            <Route path="/ai" element={<AiCommandsPage />} />
-            <Route path="/speech" element={<SpeechPage />} />
-            <Route path="/animations" element={<AnimationsPage />} />
-            <Route path="/diagnostics" element={<DiagnosticsPage />} />
-            <Route path="/automation" element={<AutomationControlPage />} />
-            <Route path="/camera" element={<CameraPage />} />
-            <Route path="/routines" element={<RoutinesPage />} />
-            <Route path="/notifications" element={<NotificationsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Routes>
+          <Suspense fallback={<PageFallback />}>
+            <Routes>
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/startup" element={<StartupConnectPage />} />
+              <Route path="/pairing" element={<PairingPage />} />
+              <Route path="/drive" element={<DrivePage />} />
+              <Route path="/ai" element={<AiCommandsPage />} />
+              <Route path="/speech" element={<SpeechPage />} />
+              <Route path="/animations" element={<AnimationsPage />} />
+              <Route path="/diagnostics" element={<DiagnosticsPage />} />
+              <Route path="/automation" element={<AutomationControlPage />} />
+              <Route path="/camera" element={<CameraPage />} />
+              <Route path="/routines" element={<RoutinesPage />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Routes>
+          </Suspense>
         </main>
 
         <aside className="hidden 2xl:block">

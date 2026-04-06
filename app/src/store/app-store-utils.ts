@@ -22,6 +22,8 @@ export const actionDefaults = (): Record<string, ActionFeedback> => ({
   speak: { status: "idle" },
   animation: { status: "idle" },
   diagnostics: { status: "idle" },
+  voice: { status: "idle" },
+  support: { status: "idle" },
   automation: { status: "idle" },
   dock: { status: "idle" },
   wake: { status: "idle" },
@@ -146,6 +148,9 @@ export const mergePersistedState = (
     diagnosticReports: Array.isArray(persistedState.diagnosticReports)
       ? persistedState.diagnosticReports
       : currentState.diagnosticReports,
+    supportReports: Array.isArray(persistedState.supportReports)
+      ? persistedState.supportReports
+      : currentState.supportReports,
     roamSessions: Array.isArray(persistedState.roamSessions)
       ? persistedState.roamSessions
       : currentState.roamSessions,
@@ -318,6 +323,7 @@ export const partializeState = (state: AppState): PersistedSlice => ({
   logs: state.logs,
   notifications: state.notifications,
   diagnosticReports: state.diagnosticReports,
+  supportReports: state.supportReports,
   roamSessions: state.roamSessions,
   automationControl: state.automationControl,
   queuedAnimations: state.queuedAnimations,
@@ -340,6 +346,7 @@ export const exportSnapshot = (state: AppSnapshot) =>
       logs: state.logs,
       notifications: state.notifications,
       diagnosticReports: state.diagnosticReports,
+      supportReports: state.supportReports,
       roamSessions: state.roamSessions,
       automationControl: state.automationControl,
       snapshots: state.snapshots,

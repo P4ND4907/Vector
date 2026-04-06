@@ -29,6 +29,7 @@ const mergeSnapshotWithPersistedUi = (freshState: AppState, persistedState: AppS
     routines: freshState.routines,
     logs: freshState.logs,
     availableRobots: freshState.availableRobots,
+    supportReports: freshState.supportReports,
     snapshots: freshState.snapshots.length ? freshState.snapshots : merged.snapshots
   };
 };
@@ -62,9 +63,14 @@ export const createRobotActions = (
   | "playQueuedAnimations"
   | "playRandomAnimation"
   | "runDiagnostics"
+  | "repairVoiceSetup"
+  | "quickRepair"
+  | "reportProblem"
   | "returnToDock"
   | "toggleMute"
   | "takeSnapshot"
+  | "syncPhotos"
+  | "deleteSnapshot"
   | "clearLogs"
   | "exportState"
 > => ({
@@ -438,6 +444,93 @@ export const createRobotActions = (
     });
   },
 
+  repairVoiceSetup: async () => {
+    await runAction("voice", set, async () => {
+      const state = get();
+      const result = await robotService.repairVoiceSetup({
+        robot: state.robot,
+        integration: state.integration
+      });
+
+      set((current) => ({
+        robot: result.robot ? { ...current.robot, ...result.robot } : current.robot,
+        integration: result.integration ?? current.integration,
+        logs: [
+          appendLog("voice-repair", {}, "success", result.message),
+          ...current.logs
+        ].slice(0, 60),
+        notifications: [
+          createNotification("Voice setup refreshed", result.message, "info", "system"),
+          ...current.notifications
+        ].slice(0, 20),
+        toasts: [appendToast("Voice defaults refreshed", result.message, "success"), ...current.toasts].slice(0, 5)
+      }));
+
+      return result.message;
+    });
+  },
+
+  quickRepair: async () => {
+    await runAction("support", set, async () => {
+      const state = get();
+      const result = await robotService.quickRepair(state);
+      if (!result.data) {
+        throw new Error("Quick repair did not return a result.");
+      }
+      const data = result.data;
+
+      set((current) => ({
+        robot: data.snapshot.robot,
+        integration: data.snapshot.integration,
+        logs: data.snapshot.logs,
+        diagnosticReports: current.diagnosticReports,
+        notifications: [
+          createNotification("Quick repair finished", result.message, data.repair.overallStatus === "failed" ? "warning" : "info", "system"),
+          ...current.notifications
+        ].slice(0, 20),
+        toasts: [
+          appendToast(
+            data.repair.overallStatus === "repaired" ? "Quick repair worked" : "Quick repair finished",
+            result.message,
+            data.repair.overallStatus === "failed" ? "warning" : "success"
+          ),
+          ...current.toasts
+        ].slice(0, 5)
+      }));
+
+      return result.message;
+    });
+  },
+
+  reportProblem: async ({ summary, details, contactEmail }) => {
+    await runAction("support", set, async () => {
+      const state = get();
+      const result = await robotService.reportProblem(state, {
+        summary,
+        details,
+        contactEmail
+      });
+      if (!result.data) {
+        throw new Error("Problem report did not return a saved report.");
+      }
+      const data = result.data;
+
+      set((current) => ({
+        robot: data.snapshot.robot,
+        integration: data.snapshot.integration,
+        logs: data.snapshot.logs,
+        supportReports: data.reports,
+        notifications: [
+          createNotification("Problem report saved", result.message, "info", "system"),
+          ...current.notifications
+        ].slice(0, 20),
+        toasts: [appendToast("Problem report saved", result.message, "success"), ...current.toasts].slice(0, 5)
+      }));
+
+      return result.message;
+    });
+  },
+
   returnToDock: async () => {
     await runAction("dock", set, async () => {
       const state = get();
@@ -528,6 +621,75 @@ export const createRobotActions = (
           ...state.toasts
         ].slice(0, 5)
       }));
+      return result.message;
+    });
+  },
+
+  syncPhotos: async () => {
+    await runAction("photo", set, async () => {
+      const result = await robotService.syncPhotos();
+      if (!result.data) {
+        throw new Error("Photo sync did not return any library data.");
+      }
+
+      const photoData = result.data;
+      const snapshot: CameraSnapshot | undefined = photoData.latestSnapshot;
+
+      set((state) => ({
+        snapshots:
+          photoData.snapshots.length > 0
+            ? photoData.snapshots.slice(0, 12)
+            : state.snapshots,
+        visionEvents: snapshot
+          ? [
+              {
+                id: crypto.randomUUID(),
+                label:
+                  photoData.syncedCount > 0
+                    ? `Synced ${photoData.syncedCount} robot photo${photoData.syncedCount === 1 ? "" : "s"}`
+                    : "Photo library checked",
+                createdAt: new Date().toISOString(),
+                confidence: 1
+              },
+              ...state.visionEvents
+            ].slice(0, 12)
+          : state.visionEvents,
+        logs: [
+          appendLog("photo-sync", { syncedCount: photoData.syncedCount }, "success", result.message),
+          ...state.logs
+        ].slice(0, 60),
+        toasts: [
+          appendToast(
+            photoData.syncedCount > 0 ? "Photos synced" : "Library checked",
+            result.message,
+            "success"
+          ),
+          ...state.toasts
+        ].slice(0, 5)
+      }));
+
+      return result.message;
+    });
+  },
+
+  deleteSnapshot: async (photoId) => {
+    await runAction("photo", set, async () => {
+      const state = get();
+      const result = await robotService.deletePhoto(photoId, state.snapshots);
+      if (!result.data) {
+        throw new Error("Photo delete did not return an updated library.");
+      }
+
+      const photoData = result.data;
+      set((current) => ({
+        snapshots: photoData.snapshots.slice(0, 12),
+        logs: [
+          appendLog("photo-delete", { photoId }, "success", result.message),
+          ...current.logs
+        ].slice(0, 60),
+        toasts: [appendToast("Photo deleted", result.message, "success"), ...current.toasts].slice(0, 5)
+      }));
+
       return result.message;
     });
   },

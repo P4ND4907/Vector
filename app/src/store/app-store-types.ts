@@ -35,6 +35,9 @@ export interface AppState extends AppSnapshot {
   playQueuedAnimations: () => Promise<void>;
   playRandomAnimation: () => Promise<void>;
   runDiagnostics: () => Promise<void>;
+  repairVoiceSetup: () => Promise<void>;
+  quickRepair: () => Promise<void>;
+  reportProblem: (payload: { summary: string; details: string; contactEmail?: string }) => Promise<void>;
   updateAutomationControl: (patch: Partial<AutomationControl>) => void;
   startRoam: () => Promise<void>;
   pauseRoam: () => Promise<void>;
@@ -43,6 +46,8 @@ export interface AppState extends AppSnapshot {
   returnToDock: () => Promise<void>;
   toggleMute: () => Promise<void>;
   takeSnapshot: () => Promise<void>;
+  syncPhotos: () => Promise<void>;
+  deleteSnapshot: (photoId: string) => Promise<void>;
   saveRoutine: (routine: Routine) => Promise<void>;
   removeRoutine: (routineId: string) => Promise<void>;
   toggleRoutine: (routineId: string) => void;
@@ -68,6 +73,7 @@ export type PersistedSlice = Partial<
     | "diagnosticReports"
     | "roamSessions"
     | "automationControl"
+    | "supportReports"
     | "queuedAnimations"
     | "driveState"
     | "settings"

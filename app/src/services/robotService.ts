@@ -14,32 +14,43 @@ import {
   mapDiagnosticReport,
   mapDiagnosticsSnapshot,
   mapIntegration,
+  mapRepairResult,
   mapRobot,
   mapRoutine,
   mapSettings,
+  mapSupportReport,
   type ServerBootstrapResponse,
   type ServerCameraSnapshot,
   type ServerDiagnosticsSnapshot,
   type ServerDiscoveredRobot,
   type ServerIntegration,
   type ServerLog,
+  type ServerRepairResult,
   type ServerRobot,
   type ServerRoutine,
-  type ServerSettings
+  type ServerSettings,
+  type ServerSupportReport
 } from "@/services/robotBackend";
+import { buildFeatureFlags, buildOptionalFeatureList } from "@/lib/optional-features";
 import type {
   AnimationItem,
   AppSettings,
   AppSnapshot,
+  CameraSnapshot,
   CameraSyncResult,
   DiagnosticReport,
   DiagnosticsSnapshot,
   IntegrationStatus,
   PairRobotInput,
+  RepairResult,
   Robot,
   RobotCommandResult,
   RobotProfile,
-  Routine
+  Routine,
+  SupportReport,
+  WirePodConnectionMode,
+  WirePodSetupStatus,
+  WirePodWeatherConfig
 } from "@/types";
 
 interface ActionApiResponse {
@@ -51,6 +62,14 @@ interface ActionApiResponse {
 interface SettingsApiResponse {
   settings: ServerSettings;
   integration: ServerIntegration;
+}
+
+interface WirePodWeatherApiResponse {
+  weather: WirePodWeatherConfig;
+}
+
+interface WirePodSetupApiResponse {
+  setup: WirePodSetupStatus;
 }
 
 interface StatusApiResponse {
@@ -68,6 +87,23 @@ interface DiagnosticsRunResponse {
   snapshot: ServerDiagnosticsSnapshot;
 }
 
+interface QuickRepairApiResponse {
+  repair: ServerRepairResult;
+  snapshot: ServerDiagnosticsSnapshot;
+}
+
+interface SupportReportApiResponse {
+  report: ServerSupportReport;
+  reports: ServerSupportReport[];
+  snapshot: ServerDiagnosticsSnapshot;
+}
+
+interface VoiceRepairApiResponse {
+  log: ServerLog;
+  robot: ServerRobot;
+  integration: ServerIntegration;
+}
+
 interface CameraSyncApiResponse {
   snapshots: ServerCameraSnapshot[];
   latestSnapshot?: ServerCameraSnapshot;
@@ -81,10 +117,59 @@ interface RobotEnvelope {
   integration: IntegrationStatus;
 }
 
+let telemetryPausedUntil = 0;
+const AUTO_RECONNECT_COOLDOWN_MS = 15_000;
+const WIREPOD_SETUP_CACHE_MS = 4_000;
+let wirePodSetupCache: { value: WirePodSetupStatus; expiresAt: number } | null = null;
+
+const clearWirePodSetupCache = () => {
+  wirePodSetupCache = null;
+};
+
+export const pauseTelemetry = (durationMs: number) => {
+  telemetryPausedUntil = Math.max(telemetryPausedUntil, Date.now() + Math.max(0, durationMs));
+};
+
 interface SettingsEnvelope {
   settings: AppSettings;
   integration: IntegrationStatus;
 }
+
+const buildReconnectPayload = (
+  robot: Robot,
+  integration: IntegrationStatus,
+  settings: AppSettings
+) => ({
+  serial: robot.serial || settings.robotSerial || integration.selectedSerial,
+  name: robot.nickname || robot.name,
+  nickname: robot.nickname,
+  ipAddress: robot.ipAddress,
+  token: robot.token
+});
+
+const shouldAttemptReconnect = (
+  context: { robot: Robot; integration: IntegrationStatus; settings: AppSettings },
+  reconnectInFlight: boolean,
+  lastReconnectAttemptAt: number
+) => {
+  if (reconnectInFlight || context.settings.mockMode || !context.settings.reconnectOnStartup) {
+    return false;
+  }
+
+  if (!context.integration.wirePodReachable) {
+    return false;
+  }
+
+  if (!context.robot.serial && !context.settings.robotSerial && !context.integration.selectedSerial) {
+    return false;
+  }
+
+  if (context.robot.isConnected && context.integration.robotReachable) {
+    return false;
+  }
+
+  return Date.now() - lastReconnectAttemptAt >= AUTO_RECONNECT_COOLDOWN_MS;
+};
 
 const shouldUseFallback = (error: unknown) => isNetworkError(error);
 
@@ -124,6 +209,11 @@ const buildBootstrapSnapshot = (fallback: AppSnapshot, response: ServerBootstrap
     ...fallback.settings,
     robotNickname: robot.nickname ?? fallback.settings.robotNickname
   });
+  const resolvedOptionalModules = response.optionalModules ?? fallback.optionalModules;
+  const resolvedFeatureFlags =
+    response.featureFlags ?? buildFeatureFlags(resolvedOptionalModules);
+  const resolvedOptionalFeatureList =
+    response.optionalFeatureList ?? buildOptionalFeatureList(resolvedOptionalModules);
   const savedProfile: RobotProfile = {
     id: robot.id,
     serial: robot.serial,
@@ -141,11 +231,15 @@ const buildBootstrapSnapshot = (fallback: AppSnapshot, response: ServerBootstrap
       nickname: settings.robotNickname || robot.nickname || robot.name
     },
     integration,
+    optionalModules: resolvedOptionalModules,
+    optionalFeatureList: resolvedOptionalFeatureList,
+    featureFlags: resolvedFeatureFlags,
     settings,
     routines: response.routines.map(mapRoutine),
     logs: response.logs,
     snapshots: response.snapshots.map(mapCameraSnapshot),
     availableRobots: response.robots.map(mapAvailableRobot),
+    supportReports: Array.isArray(response.supportReports) ? response.supportReports.map(mapSupportReport) : [],
     savedProfiles: [
       savedProfile,
       ...fallback.savedProfiles.filter((profile) =>
@@ -455,6 +549,7 @@ export const robotService = {
   },
 
   async speak(text: string, context?: { robot: Robot; integration: IntegrationStatus }) {
+    pauseTelemetry(12_000);
     return useApiOrFallback(
       async () => {
         const fallback = context ?? {
@@ -668,6 +763,71 @@ export const robotService = {
     );
   },
 
+  async syncPhotos(): Promise<RobotCommandResult<CameraSyncResult>> {
+    return useApiOrFallback(
+      async () => {
+        const response = await postJson<CameraSyncApiResponse>(
+          "/api/robot/camera/sync",
+          undefined,
+          "Photo sync failed."
+        );
+
+        return {
+          ok: true,
+          message: response.note || "Robot photo library synced.",
+          data: {
+            snapshots: response.snapshots.map(mapCameraSnapshot),
+            latestSnapshot: response.latestSnapshot ? mapCameraSnapshot(response.latestSnapshot) : undefined,
+            syncedCount: response.syncedCount,
+            note: response.note
+          }
+        };
+      },
+      async () => {
+        const result = await mockRobotService.syncPhotos();
+        if (!result.data) {
+          throw new Error("Photo sync did not return any library data.");
+        }
+
+        return {
+          ok: true,
+          message: result.message,
+          data: {
+            snapshots: result.data.snapshots,
+            latestSnapshot: result.data.latestSnapshot ?? result.data.snapshots[0],
+            syncedCount: result.data.syncedCount,
+            note: result.data.note
+          }
+        };
+      }
+    );
+  },
+
+  async deletePhoto(photoId: string, currentSnapshots?: CameraSnapshot[]): Promise<RobotCommandResult<CameraSyncResult>> {
+    return useApiOrFallback<RobotCommandResult<CameraSyncResult>>(
+      async () => {
+        const response = await deleteJson<CameraSyncApiResponse>(
+          `/api/robot/camera/photo/${encodeURIComponent(photoId)}`,
+          "Photo delete failed."
+        );
+
+        return {
+          ok: true,
+          message: response.note || "Photo removed.",
+          data: {
+            snapshots: response.snapshots.map(mapCameraSnapshot),
+            latestSnapshot: response.latestSnapshot ? mapCameraSnapshot(response.latestSnapshot) : undefined,
+            syncedCount: response.syncedCount,
+            note: response.note
+          }
+        };
+      },
+      async () => {
+        return mockRobotService.deletePhoto(photoId, currentSnapshots ?? cloneSnapshot().snapshots);
+      }
+    );
+  },
+
   async saveRoutine(routine: Routine) {
     return useApiOrFallback(
       async () => {
@@ -770,7 +930,136 @@ export const robotService = {
     );
   },
 
+  async repairVoiceSetup(context?: { robot: Robot; integration: IntegrationStatus }) {
+    return useApiOrFallback(
+      async () => {
+        const fallback = context ?? {
+          robot: cloneSnapshot().robot,
+          integration: cloneSnapshot().integration
+        };
+        const response = await postJson<VoiceRepairApiResponse>(
+          "/api/diagnostics/voice/repair",
+          undefined,
+          "Voice setup repair failed."
+        );
+        return mapActionResult(response, fallback.robot, fallback.integration);
+      },
+      async () => {
+        const fallback = context ?? {
+          robot: cloneSnapshot().robot,
+          integration: cloneSnapshot().integration
+        };
+        return {
+          message: "Mock voice setup refreshed.",
+          robot: fallback.robot,
+          integration: fallback.integration
+        };
+      }
+    );
+  },
+
+  async quickRepair(current: AppSnapshot): Promise<RobotCommandResult<{ repair: RepairResult; snapshot: DiagnosticsSnapshot }>> {
+    return useApiOrFallback(
+      async () => {
+        const response = await postJson<QuickRepairApiResponse>(
+          "/api/support/repair",
+          undefined,
+          "Quick repair failed."
+        );
+        return {
+          ok: true,
+          message: response.repair.summary,
+          data: {
+            repair: mapRepairResult(response.repair),
+            snapshot: mapDiagnosticsSnapshot(response.snapshot, current)
+          }
+        };
+      },
+      async () => ({
+        ok: true,
+        message: "Mock quick repair refreshed the local test state.",
+        data: {
+          repair: {
+            id: crypto.randomUUID(),
+            createdAt: new Date().toISOString(),
+            overallStatus: "repaired",
+            summary: "Mock mode does not need a live repair.",
+            steps: [
+              {
+                id: crypto.randomUUID(),
+                label: "Mock mode",
+                status: "success",
+                details: "The app is running in mock mode, so no live Vector repair was needed."
+              }
+            ]
+          },
+          snapshot: await mockRobotService.getDiagnosticsSnapshot(current)
+        }
+      })
+    );
+  },
+
+  async reportProblem(
+    current: AppSnapshot,
+    payload: { summary: string; details: string; contactEmail?: string }
+  ): Promise<RobotCommandResult<{ report: SupportReport; reports: SupportReport[]; snapshot: DiagnosticsSnapshot }>> {
+    return useApiOrFallback(
+      async () => {
+        const response = await postJson<SupportReportApiResponse>(
+          "/api/support/report",
+          payload,
+          "Problem report failed."
+        );
+        return {
+          ok: true,
+          message: "Problem report saved locally after the latest repair attempt.",
+          data: {
+            report: mapSupportReport(response.report),
+            reports: response.reports.map(mapSupportReport),
+            snapshot: mapDiagnosticsSnapshot(response.snapshot, current)
+          }
+        };
+      },
+      async () => {
+        const repair = {
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          overallStatus: "repaired" as const,
+          summary: "Mock repair completed.",
+          steps: [
+            {
+              id: crypto.randomUUID(),
+              label: "Mock mode",
+              status: "success" as const,
+              details: "Mock mode refreshed its local test state."
+            }
+          ]
+        };
+        const report: SupportReport = {
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          summary: payload.summary,
+          details: payload.details,
+          contactEmail: payload.contactEmail,
+          robotName: cloneSnapshot().robot.nickname ?? cloneSnapshot().robot.name,
+          integrationNote: "Mock mode is active.",
+          repairResult: repair
+        };
+        return {
+          ok: true,
+          message: "Mock problem report saved locally.",
+          data: {
+            report,
+            reports: [report],
+            snapshot: await mockRobotService.getDiagnosticsSnapshot(current)
+          }
+        };
+      }
+    );
+  },
+
   async updateSettings(patch: Partial<AppSettings>, current: AppSettings): Promise<SettingsEnvelope> {
+    clearWirePodSetupCache();
     const backendPatch = {
       theme: patch.theme,
       colorTheme: patch.colorTheme,
@@ -808,6 +1097,61 @@ export const robotService = {
     );
   },
 
+  async getWirePodWeatherConfig(): Promise<WirePodWeatherConfig> {
+    return getJson<WirePodWeatherApiResponse>(
+      "/api/settings/wirepod/weather",
+      "WirePod weather settings are unavailable."
+    ).then((response) => response.weather);
+  },
+
+  async updateWirePodWeatherConfig(payload: {
+    provider: string;
+    key: string;
+    unit?: string;
+  }): Promise<WirePodWeatherConfig> {
+    return postJson<WirePodWeatherApiResponse>(
+      "/api/settings/wirepod/weather",
+      payload,
+      "WirePod weather settings could not be saved."
+    ).then((response) => response.weather);
+  },
+
+  async getWirePodSetupStatus(): Promise<WirePodSetupStatus> {
+    if (wirePodSetupCache && wirePodSetupCache.expiresAt > Date.now()) {
+      return wirePodSetupCache.value;
+    }
+
+    return getJson<WirePodSetupApiResponse>(
+      "/api/settings/wirepod/setup",
+      "WirePod setup details are unavailable."
+    ).then((response) => {
+      wirePodSetupCache = {
+        value: response.setup,
+        expiresAt: Date.now() + WIREPOD_SETUP_CACHE_MS
+      };
+      return response.setup;
+    });
+  },
+
+  async finishWirePodSetup(payload?: {
+    language?: string;
+    connectionMode?: Exclude<WirePodConnectionMode, "unknown">;
+    port?: string;
+  }): Promise<WirePodSetupStatus> {
+    clearWirePodSetupCache();
+    return postJson<WirePodSetupApiResponse>(
+      "/api/settings/wirepod/setup",
+      payload ?? {},
+      "WirePod setup could not be completed."
+    ).then((response) => {
+      wirePodSetupCache = {
+        value: response.setup,
+        expiresAt: Date.now() + WIREPOD_SETUP_CACHE_MS
+      };
+      return response.setup;
+    });
+  },
+
   async startRoam(robot: Robot, automation: Parameters<typeof mockRobotService.startRoam>[1], existingCount: number) {
     return mockRobotService.startRoam(robot, automation, existingCount);
   },
@@ -833,6 +1177,8 @@ export const robotService = {
     let stopped = false;
     let timer: number | null = null;
     let fallbackStopper: (() => void) | null = null;
+    let reconnectInFlight = false;
+    let lastReconnectAttemptAt = 0;
 
     const clearTimer = () => {
       if (timer !== null) {
@@ -876,22 +1222,65 @@ export const robotService = {
       fallbackStopper = null;
     };
 
+    const attemptReconnect = async (
+      context: { robot: Robot; integration: IntegrationStatus; settings: AppSettings }
+    ) => {
+      if (!shouldAttemptReconnect(context, reconnectInFlight, lastReconnectAttemptAt)) {
+        return;
+      }
+
+      reconnectInFlight = true;
+      lastReconnectAttemptAt = Date.now();
+
+      try {
+        const response = await postJson<StatusApiResponse>(
+          "/api/robot/connect",
+          buildReconnectPayload(context.robot, context.integration, context.settings),
+          "Robot reconnection failed."
+        );
+
+        onUpdate(mapRobotEnvelope(response, context.robot, context.integration));
+      } catch {
+        // Keep the last visible offline state and try again on the next cooldown.
+      } finally {
+        reconnectInFlight = false;
+      }
+    };
+
     const poll = async () => {
       try {
+        if (Date.now() < telemetryPausedUntil) {
+          schedule();
+          return;
+        }
+
         const context = getContext();
         const response = await getJson<StatusApiResponse>(
           "/api/robot/status",
           "Robot status poll failed."
         );
         stopMockTelemetry();
-        onUpdate(mapRobotEnvelope(response, context.robot, context.integration));
+        const nextState = mapRobotEnvelope(response, context.robot, context.integration);
+        onUpdate(nextState);
+
+        await attemptReconnect({
+          robot: nextState.robot,
+          integration: nextState.integration,
+          settings: context.settings
+        });
       } catch (error) {
         const context = getContext();
         if (shouldUseFallback(error) && (context.settings.mockMode || context.integration.source === "mock")) {
           ensureMockTelemetry();
         } else {
           stopMockTelemetry();
-          onUpdate(buildOfflineWirePodState(context.robot, context.integration));
+          const offlineState = buildOfflineWirePodState(context.robot, context.integration);
+          onUpdate(offlineState);
+          await attemptReconnect({
+            robot: offlineState.robot,
+            integration: offlineState.integration,
+            settings: context.settings
+          });
         }
       } finally {
         schedule();

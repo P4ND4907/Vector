@@ -1,7 +1,12 @@
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
+import {
+  buildAiBrainChat,
+  getAiMemory
+} from "../services/aiBrainService.js";
 import { executeAiCommand, previewAiCommand } from "../services/aiCommandService.js";
 import type { RobotController } from "../robot/types.js";
+import { buildOptionalModuleSnapshot, optionalModules } from "../services/optionalModules.js";
 
 const envSchema = z.object({
   openaiApiKey: z.string(),
@@ -14,6 +19,15 @@ const routineRequestSchema = z.object({
 
 const commandRequestSchema = z.object({
   prompt: z.string().min(2).max(600)
+});
+
+const chatRequestSchema = z.object({
+  message: z.string().min(1).max(1200)
+});
+
+const memorySaveSchema = z.object({
+  key: z.string().min(1).max(80),
+  value: z.string().min(1).max(400)
 });
 
 const routineDraftSchema = z.object({
@@ -177,8 +191,69 @@ export const createAiRouter = (controller: RobotController, rawEnv: unknown) => 
   router.get("/status", async (_request: Request, response: Response) => {
     response.json({
       enabled: Boolean(env.openaiApiKey),
-      model: env.openaiModel
+      model: env.openaiModel,
+      modules: buildOptionalModuleSnapshot(optionalModules, env).optionalModules
     });
+  });
+
+  router.post("/chat", async (request: Request, response: Response) => {
+    try {
+      const body = chatRequestSchema.parse(request.body ?? {});
+      const memory = await controller.getAiMemory();
+      const result = await buildAiBrainChat({
+        controller,
+        env,
+        message: body.message,
+        memory
+      });
+
+      response.json({
+        reply: result.reply,
+        mode: result.mode,
+        memoryCount: memory.length
+      });
+    } catch (error) {
+      handleRouteError(error, response);
+    }
+  });
+
+  router.post("/memory/save", async (request: Request, response: Response) => {
+    try {
+      const body = memorySaveSchema.parse(request.body ?? {});
+      const memory = await controller.saveAiMemory(body);
+      response.json({
+        ok: true,
+        saved: memory.find((item) => item.key.toLowerCase() === body.key.trim().toLowerCase()),
+        items: memory
+      });
+    } catch (error) {
+      handleRouteError(error, response);
+    }
+  });
+
+  const handleMemoryGet = async (key: string | undefined, response: Response) => {
+    const memory = getAiMemory(await controller.getAiMemory(), key);
+    response.json({
+      items: memory
+    });
+  };
+
+  router.get("/memory/get", async (request: Request, response: Response) => {
+    try {
+      const key = typeof request.query.key === "string" ? request.query.key : undefined;
+      await handleMemoryGet(key, response);
+    } catch (error) {
+      handleRouteError(error, response);
+    }
+  });
+
+  router.post("/memory/get", async (request: Request, response: Response) => {
+    try {
+      const body = z.object({ key: z.string().min(1).max(80).optional() }).parse(request.body ?? {});
+      await handleMemoryGet(body.key, response);
+    } catch (error) {
+      handleRouteError(error, response);
+    }
   });
 
   router.post("/routine-draft", async (request: Request, response: Response) => {
@@ -203,9 +278,18 @@ export const createAiRouter = (controller: RobotController, rawEnv: unknown) => 
   router.post("/commands/preview", async (request: Request, response: Response) => {
     try {
       const body = commandRequestSchema.parse(request.body ?? {});
-      response.json({
-        parsed: await previewAiCommand(body.prompt)
-      });
+      const parsed = await previewAiCommand(body.prompt);
+
+      if (!parsed.canExecute) {
+        await controller.recordCommandGap({
+          source: "ai",
+          prompt: body.prompt,
+          category: "unsupported",
+          note: parsed.warnings[0] || "The shared command registry could not match this request yet."
+        });
+      }
+
+      response.json({ parsed });
     } catch (error) {
       handleRouteError(error, response);
     }
@@ -216,6 +300,12 @@ export const createAiRouter = (controller: RobotController, rawEnv: unknown) => 
       const body = commandRequestSchema.parse(request.body ?? {});
       const parsed = await previewAiCommand(body.prompt);
       if (!parsed.canExecute) {
+        await controller.recordCommandGap({
+          source: "ai",
+          prompt: body.prompt,
+          category: "unsupported",
+          note: parsed.warnings[0] || "The shared command registry could not match this request yet."
+        });
         response.status(400).json({
           message: parsed.warnings[0] || "I could not convert that into a supported Vector command yet.",
           parsed

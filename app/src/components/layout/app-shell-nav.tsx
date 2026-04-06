@@ -27,6 +27,7 @@ const primaryNavItems: NavItem[] = [
   { to: "/pairing", label: "Connect", icon: Bot },
   { to: "/drive", label: "Controls", icon: Gamepad2 },
   { to: "/ai", label: "AI", icon: BrainCircuit },
+  { to: "/camera", label: "Photos", icon: Camera },
   { to: "/routines", label: "Routines", icon: WandSparkles },
   { to: "/diagnostics", label: "Health", icon: Stethoscope },
   { to: "/settings", label: "Settings", icon: Cog }
@@ -35,8 +36,7 @@ const primaryNavItems: NavItem[] = [
 const secondaryNavItems: NavItem[] = [
   { to: "/speech", label: "Speech", icon: Mic },
   { to: "/animations", label: "Animate", icon: Sparkles },
-  { to: "/automation", label: "Roam", icon: Radar },
-  { to: "/camera", label: "Camera", icon: Camera }
+  { to: "/automation", label: "Roam", icon: Radar }
 ];
 
 export function DesktopNav() {

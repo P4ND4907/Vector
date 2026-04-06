@@ -14,5 +14,8 @@ server/.env.local
 .env.local
 .runtime
 .edge-headless
+release
+dist-electron
+build-resources/icons
 yarn.lock
 pnpm-lock.yaml

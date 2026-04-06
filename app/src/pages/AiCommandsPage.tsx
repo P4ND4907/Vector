@@ -15,10 +15,20 @@ const EXAMPLE_PROMPTS = [
   "drive forward for 2 seconds",
   "go dock",
   "turn left then say hi",
-  "wake up and check battery"
+  "wake up and check battery",
+  "what's the weather",
+  "roll a die",
+  "take a photo",
+  "my name is Joseph"
 ];
 
 const DEFAULT_MESSAGE = "Preview a plain-English instruction before you send it to Vector.";
+
+const normalizePrompt = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 
 const makeLog = (
   prompt: string,
@@ -76,6 +86,82 @@ const describeAction = (action: AiCommandAction) => {
       return "The backend will check Vector's live status.";
     case "roam":
       return "Vector will start an autonomous roam routine.";
+    case "photo":
+      return "Vector will capture a photo, then sync the latest saved image into the local gallery.";
+    case "assistant": {
+      const kind = String(action.params.kind ?? "");
+
+      switch (kind) {
+        case "set-user-name":
+          return action.params.name
+            ? `The app will remember your name as ${String(action.params.name)}.`
+            : "The app will save your name locally.";
+        case "get-user-name":
+          return "The app will read the saved user identity.";
+        case "weather":
+          return action.params.location
+            ? `The backend will look up the current weather in ${String(action.params.location)}.`
+            : "The backend will look up the current weather using the saved location.";
+        case "weather-tomorrow":
+          return action.params.location
+            ? `The backend will look up tomorrow's forecast in ${String(action.params.location)}.`
+            : "The backend will look up tomorrow's forecast using the saved location.";
+        case "set-timer":
+          return action.params.durationLabel
+            ? `The app will start a timer for ${String(action.params.durationLabel)}.`
+            : "The app will start a timer if a duration is present.";
+        case "check-timer":
+          return "The app will report the current timer state.";
+        case "cancel-timer":
+          return "The app will cancel the active timer.";
+        case "time-lookup":
+          return "The backend will read the current local time.";
+        case "battery-status":
+          return "The backend will read Vector's live battery and charging state.";
+        case "connect":
+          return "The app will try to reconnect to the selected robot.";
+        case "disconnect":
+          return "The app will disconnect the current robot session cleanly.";
+        case "diagnostics":
+          return "The backend will run the full diagnostics snapshot and speak the summary.";
+        case "set-robot-name":
+          return action.params.name
+            ? `The app will save ${String(action.params.name)} as Vector's local display name.`
+            : "The app will update Vector's local display name.";
+        case "get-robot-name":
+          return "The backend will read Vector's current local display name.";
+        case "switch-language":
+          return action.params.language
+            ? `The app will remember ${String(action.params.language)} as the preferred language for command features.`
+            : "The app will update the preferred language setting.";
+        case "translate-phrase":
+          return "This translation request is recognized and logged, but live translation is still a future integration.";
+        case "roll-die":
+          return "The app will roll a virtual die and read the result aloud.";
+        case "chat-with-user":
+          return action.params.target
+            ? `The app will save ${String(action.params.target)} as the active chat target.`
+            : "The app will update the active chat target.";
+        case "get-chat-target":
+          return "The app will read the saved chat target.";
+        case "send-chat-message":
+          return "The app will relay the saved chat message through the shared command engine.";
+        case "volume-down":
+          return "The app will lower Vector's speaker volume by one step.";
+        case "mute-audio":
+          return "The app will mute Vector's speaker output.";
+        case "stop-exploring":
+          return "The app will stop any active roam or exploration session.";
+        case "show-help":
+          return "The app will speak a short list of supported commands.";
+        case "stock-intent":
+          return action.params.intent
+            ? `Vector will run the stock robot routine for ${String(action.params.intent)}.`
+            : "Vector will run a stock robot routine.";
+        default:
+          return "This legacy or community command is recognized and routed through the shared assistant handler.";
+      }
+    }
     default:
       return "This step will run through the local Vector backend.";
   }
@@ -98,6 +184,7 @@ export function AiCommandsPage() {
   const latestAiLogs = useMemo(() => aiCommandHistory.slice(0, 5), [aiCommandHistory]);
   const brainStatus = getBrainStatusLabel(integration);
   const aiModeLabel = aiStatus?.enabled ? aiStatus.model : "Rules parser";
+  const previewIsFresh = preview ? normalizePrompt(preview.prompt) === normalizePrompt(prompt) : false;
   const showMessageAsError = !preview && message !== DEFAULT_MESSAGE && !previewing && !executing;
   const dockNote = robot.isDocked
     ? "Vector is on the charger. Take it off the dock before asking for wheel movement."
@@ -134,18 +221,24 @@ export function AiCommandsPage() {
     };
   }, []);
 
+  const requestPreview = async (nextPrompt: string) => {
+    const nextPreview = await aiService.previewCommand(nextPrompt);
+    setPreview(nextPreview);
+    setMessage(
+      nextPreview.canExecute
+        ? nextPreview.summary
+        : nextPreview.warnings[0] || "That command needs a small rewrite before it can run."
+    );
+
+    return nextPreview;
+  };
+
   const handlePreview = async () => {
     setPreviewing(true);
     setMessage("Parsing your instruction...");
 
     try {
-      const nextPreview = await aiService.previewCommand(prompt);
-      setPreview(nextPreview);
-      setMessage(
-        nextPreview.canExecute
-          ? nextPreview.summary
-          : nextPreview.warnings[0] || "That command needs a small rewrite before it can run."
-      );
+      await requestPreview(prompt);
     } catch (error) {
       setPreview(null);
       setMessage(error instanceof Error ? error.message : "The AI command preview failed.");
@@ -155,14 +248,25 @@ export function AiCommandsPage() {
   };
 
   const handleExecute = async () => {
-    if (!preview?.canExecute) {
-      return;
-    }
-
     setExecuting(true);
-    setMessage("Sending command through the local Vector backend...");
 
     try {
+      let activePreview = preview;
+
+      if (!activePreview || !previewIsFresh) {
+        setPreviewing(true);
+        setMessage("Checking the latest action plan...");
+        activePreview = await requestPreview(prompt);
+      }
+
+      if (!activePreview.canExecute) {
+        setMessage(
+          activePreview.warnings[0] || "That command needs a small rewrite before it can run."
+        );
+        return;
+      }
+
+      setMessage("Sending command through the local Vector backend...");
       const result = await aiService.executeCommand(prompt, robot, integration);
       recordAiCommandHistory({
         id: crypto.randomUUID(),
@@ -187,19 +291,23 @@ export function AiCommandsPage() {
       recordAiCommandHistory({
         id: crypto.randomUUID(),
         prompt,
-        summary: preview.summary,
+        summary: preview?.summary || "No action preview available",
         status: "error",
         createdAt: new Date().toISOString(),
         resultMessage
       });
 
       useAppStore.setState((state) => ({
-        logs: [makeLog(prompt, preview.summary, "error", resultMessage), ...state.logs].slice(0, 60),
+        logs: [
+          makeLog(prompt, preview?.summary || "No action preview available", "error", resultMessage),
+          ...state.logs
+        ].slice(0, 60),
         toasts: [makeToast("AI command failed", resultMessage, "warning"), ...state.toasts].slice(0, 5)
       }));
 
       setMessage(resultMessage);
     } finally {
+      setPreviewing(false);
       setExecuting(false);
     }
   };
@@ -233,14 +341,27 @@ export function AiCommandsPage() {
               <Textarea
                 className="min-h-[140px]"
                 value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
+                onChange={(event) => {
+                  setPrompt(event.target.value);
+                  setPreview(null);
+                  setMessage(DEFAULT_MESSAGE);
+                }}
                 placeholder="Try: say hello, go dock, or turn left then say hi."
               />
             </div>
 
             <div className="flex flex-wrap gap-2">
               {EXAMPLE_PROMPTS.map((example) => (
-                <Button key={example} variant="outline" size="sm" onClick={() => setPrompt(example)}>
+                <Button
+                  key={example}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setPrompt(example);
+                    setPreview(null);
+                    setMessage(DEFAULT_MESSAGE);
+                  }}
+                >
                   {example}
                 </Button>
               ))}
@@ -251,9 +372,9 @@ export function AiCommandsPage() {
                 <Sparkles className="h-4 w-4" />
                 {previewing ? "Previewing..." : "Preview command"}
               </Button>
-              <Button variant="outline" onClick={handleExecute} disabled={!preview?.canExecute || executing}>
+              <Button variant="outline" onClick={handleExecute} disabled={executing || previewing || !prompt.trim()}>
                 <Play className="h-4 w-4" />
-                {executing ? "Executing..." : "Execute"}
+                {executing ? "Executing..." : previewIsFresh && preview?.canExecute ? "Execute" : "Run command"}
               </Button>
             </div>
 

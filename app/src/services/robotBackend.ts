@@ -5,12 +5,17 @@ import type {
   CameraSnapshot,
   DiagnosticReport,
   DiagnosticsSnapshot,
+  FeatureFlags,
   IntegrationStatus,
+  OptionalFeatureListItem,
+  OptionalModules,
   PairRobotInput,
+  RepairResult,
   PairingCandidate,
   Robot,
   RobotProfile,
-  Routine
+  Routine,
+  SupportReport
 } from "@/types";
 
 export interface ServerRobot {
@@ -117,14 +122,44 @@ export interface ServerDiagnosticsSnapshot {
   troubleshooting: string[];
 }
 
+export interface ServerRepairStep {
+  id: string;
+  label: string;
+  status: RepairResult["steps"][number]["status"];
+  details: string;
+}
+
+export interface ServerRepairResult {
+  id: string;
+  createdAt: string;
+  overallStatus: RepairResult["overallStatus"];
+  summary: string;
+  steps: ServerRepairStep[];
+}
+
+export interface ServerSupportReport {
+  id: string;
+  createdAt: string;
+  summary: string;
+  details: string;
+  contactEmail?: string;
+  robotName: string;
+  integrationNote?: string;
+  repairResult: ServerRepairResult;
+}
+
 export interface ServerBootstrapResponse {
   robot: ServerRobot;
   integration: ServerIntegration;
+  optionalModules?: OptionalModules;
+  optionalFeatureList?: OptionalFeatureListItem[];
+  featureFlags?: FeatureFlags;
   settings: ServerSettings;
   routines: ServerRoutine[];
   logs: ServerLog[];
   robots: ServerDiscoveredRobot[];
   snapshots: ServerCameraSnapshot[];
+  supportReports: ServerSupportReport[];
 }
 
 const normalizeVolume = (value: number | undefined, fallback: number) => {
@@ -242,6 +277,16 @@ export const mapCameraSnapshot = (snapshot: ServerCameraSnapshot): CameraSnapsho
 export const mapDiagnosticReport = (report: DiagnosticReport): DiagnosticReport => ({
   ...report,
   troubleshooting: Array.isArray(report.troubleshooting) ? report.troubleshooting : []
+});
+
+export const mapRepairResult = (repair: ServerRepairResult): RepairResult => ({
+  ...repair,
+  steps: Array.isArray(repair.steps) ? repair.steps : []
+});
+
+export const mapSupportReport = (report: ServerSupportReport): SupportReport => ({
+  ...report,
+  repairResult: mapRepairResult(report.repairResult)
 });
 
 export const mapDiagnosticsSnapshot = (

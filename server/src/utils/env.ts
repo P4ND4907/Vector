@@ -2,7 +2,9 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const loadLocalEnvFile = () => {
+  const configuredCandidate = process.env.VECTOR_ENV_FILE?.trim();
   const candidates = [
+    ...(configuredCandidate ? [configuredCandidate] : []),
     path.resolve(process.cwd(), "server/.env.local"),
     path.resolve(process.cwd(), ".env.local")
   ];

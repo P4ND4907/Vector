@@ -1,4 +1,4 @@
 @echo off
 setlocal
-set SCRIPT_DIR=%~dp0
+set "SCRIPT_DIR=%~dp0"
 powershell -ExecutionPolicy Bypass -File "%SCRIPT_DIR%Launch-Vector-Control-Hub.ps1" %*

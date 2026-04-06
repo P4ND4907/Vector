@@ -8,6 +8,43 @@ export type RoamBehavior = "patrol" | "explore" | "quiet";
 export type RoamSessionStatus = "running" | "paused" | "completed";
 export type AutomationStatus = "idle" | "running" | "paused";
 
+export interface OptionalModuleRecord {
+  enabled: boolean;
+  description: string;
+  features: string[];
+  endpoints: string[];
+}
+
+export interface OptionalModulesRecord {
+  [key: string]: OptionalModuleRecord;
+  dashboard: OptionalModuleRecord;
+  aiBrain: OptionalModuleRecord;
+  wirepodExpansion: OptionalModuleRecord;
+}
+
+export interface OptionalFeatureListItemRecord {
+  name: string;
+  enabled: boolean;
+  value: string;
+}
+
+export interface FeatureFlagsRecord {
+  aiBrain: boolean;
+  dashboard: boolean;
+  wirepodExpansion: boolean;
+  liveCamera: boolean;
+  businessNotifications: boolean;
+  memory: boolean;
+  routines: boolean;
+}
+
+export interface AiMemoryRecord {
+  key: string;
+  value: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface RobotStatus {
   id: string;
   name: string;
@@ -51,6 +88,27 @@ export interface WirePodProbeResult {
   error?: string;
 }
 
+export interface WirePodWeatherConfigRecord {
+  enable: boolean;
+  provider: string;
+  key: string;
+  unit?: string;
+}
+
+export type WirePodConnectionMode = "escape-pod" | "ip" | "unknown";
+
+export interface WirePodSetupStatusRecord {
+  reachable: boolean;
+  initialSetupComplete: boolean;
+  sttProvider: string;
+  sttLanguage: string;
+  connectionMode: WirePodConnectionMode;
+  port: string;
+  discoveredRobotCount: number;
+  needsRobotPairing: boolean;
+  recommendedNextStep: string;
+}
+
 export interface RuntimeSettings {
   theme: ThemeMode;
   colorTheme: ColorTheme;
@@ -62,6 +120,10 @@ export interface RuntimeSettings {
   pollingIntervalMs: number;
   liveUpdateMode: LiveUpdateMode;
   serial: string;
+  userName?: string;
+  weatherLocation?: string;
+  preferredLanguage?: string;
+  chatTarget?: string;
 }
 
 export interface RobotIntegrationInfo {
@@ -174,7 +236,9 @@ export interface ParsedAiAction {
     | "volume"
     | "animation"
     | "status"
-    | "roam";
+    | "roam"
+    | "assistant"
+    | "photo";
   label: string;
   params: Record<string, unknown>;
 }
@@ -208,6 +272,57 @@ export interface DiagnosticReportRecord {
   troubleshooting: string[];
 }
 
+export interface VoiceDiagnosticsRecord {
+  wakeWordMode: "hey-vector" | "alexa" | "unknown";
+  locale: string;
+  volume: number;
+  lastIntent?: string;
+  lastTranscription?: string;
+  lastHeardAt?: string;
+  status: "healthy" | "attention" | "critical";
+  summary: string;
+  troubleshooting: string[];
+}
+
+export interface RepairStepRecord {
+  id: string;
+  label: string;
+  status: "success" | "warn" | "fail";
+  details: string;
+}
+
+export interface RepairResultRecord {
+  id: string;
+  createdAt: string;
+  overallStatus: "repaired" | "partial" | "failed";
+  summary: string;
+  steps: RepairStepRecord[];
+}
+
+export interface SupportReportRecord {
+  id: string;
+  createdAt: string;
+  summary: string;
+  details: string;
+  contactEmail?: string;
+  robotName: string;
+  integrationNote?: string;
+  repairResult: RepairResultRecord;
+}
+
+export interface CommandGapRecord {
+  id: string;
+  createdAt: string;
+  source: "ai" | "voice";
+  prompt: string;
+  normalizedPrompt: string;
+  category: "unsupported" | "missing-integration" | "unmatched" | "no-audio";
+  note: string;
+  suggestedArea?: string;
+  heardAt?: string;
+  matchedIntent?: string;
+}
+
 export interface RobotController {
   getStatus: () => MaybePromise<RobotStatus>;
   getIntegrationInfo: () => MaybePromise<RobotIntegrationInfo>;
@@ -231,6 +346,41 @@ export interface RobotController {
   capturePhoto: () => MaybePromise<CameraSyncResult>;
   getCameraStreamUrl: () => MaybePromise<string | undefined>;
   getPhotoImage: (photoId: string, variant?: "full" | "thumb") => MaybePromise<CameraImageAsset>;
+  deletePhoto: (photoId: string) => MaybePromise<CameraSyncResult>;
+  getVoiceDiagnostics: () => MaybePromise<VoiceDiagnosticsRecord>;
+  repairVoiceSetup: () => MaybePromise<CommandLogRecord>;
+  getWirePodWeatherConfig: () => MaybePromise<WirePodWeatherConfigRecord>;
+  setWirePodWeatherConfig: (payload: {
+    provider: string;
+    key: string;
+    unit?: string;
+  }) => MaybePromise<WirePodWeatherConfigRecord>;
+  getWirePodSetupStatus: () => MaybePromise<WirePodSetupStatusRecord>;
+  finishWirePodSetup: (payload: {
+    language?: string;
+    connectionMode?: Exclude<WirePodConnectionMode, "unknown">;
+    port?: string;
+  }) => MaybePromise<WirePodSetupStatusRecord>;
+  quickRepair: () => MaybePromise<RepairResultRecord>;
+  getSupportReports: () => MaybePromise<SupportReportRecord[]>;
+  getAiMemory: () => MaybePromise<AiMemoryRecord[]>;
+  saveAiMemory: (payload: { key: string; value: string }) => MaybePromise<AiMemoryRecord[]>;
+  getCommandGaps: () => MaybePromise<CommandGapRecord[]>;
+  recordCommandGap: (payload: {
+    source: CommandGapRecord["source"];
+    prompt: string;
+    normalizedPrompt?: string;
+    category: CommandGapRecord["category"];
+    note: string;
+    suggestedArea?: string;
+    heardAt?: string;
+    matchedIntent?: string;
+  }) => MaybePromise<CommandGapRecord>;
+  reportProblem: (payload: {
+    summary: string;
+    details: string;
+    contactEmail?: string;
+  }) => MaybePromise<SupportReportRecord>;
   getAutomationControl: () => MaybePromise<AutomationControlRecord>;
   getRoamSessions: () => MaybePromise<RoamSessionRecord[]>;
   startRoam: (automation: AutomationControlRecord) => MaybePromise<RoamSessionRecord>;

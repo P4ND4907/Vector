@@ -48,6 +48,45 @@ function Test-PortListening {
   return ($null -ne $connections)
 }
 
+function Get-PortProcess {
+  param([int]$Port)
+
+  $connection = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+
+  if (-not $connection) {
+    return $null
+  }
+
+  try {
+    return Get-Process -Id $connection.OwningProcess -ErrorAction Stop
+  }
+  catch {
+    return $null
+  }
+}
+
+function Stop-ListeningProcess {
+  param([int]$Port)
+
+  $connections = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+  if (-not $connections) {
+    return
+  }
+
+  $processIds = $connections | Select-Object -ExpandProperty OwningProcess -Unique
+  foreach ($processId in $processIds) {
+    try {
+      Stop-Process -Id $processId -Force -ErrorAction Stop
+    }
+    catch {
+      Write-Warning "Could not stop process $processId on port $Port."
+    }
+  }
+
+  Start-Sleep -Milliseconds 700
+}
+
 function Wait-HttpReady {
   param(
     [string]$Url,
@@ -96,6 +135,103 @@ function Open-AppWindow {
   Start-Process $Url | Out-Null
 }
 
+function Get-LatestWriteTime {
+  param([string[]]$Paths)
+
+  $latest = $null
+
+  foreach ($path in $Paths) {
+    if (-not (Test-Path $path)) {
+      continue
+    }
+
+    $items = Get-ChildItem -Path $path -Recurse -File -ErrorAction SilentlyContinue
+    foreach ($item in $items) {
+      if (-not $latest -or $item.LastWriteTimeUtc -gt $latest) {
+        $latest = $item.LastWriteTimeUtc
+      }
+    }
+  }
+
+  return $latest
+}
+
+function Test-NeedsBuild {
+  param(
+    [string[]]$SourcePaths,
+    [string[]]$OutputPaths
+  )
+
+  $latestSourceWrite = Get-LatestWriteTime -Paths $SourcePaths
+  if (-not $latestSourceWrite) {
+    return $false
+  }
+
+  foreach ($outputPath in $OutputPaths) {
+    if (-not (Test-Path $outputPath)) {
+      return $true
+    }
+  }
+
+  $latestOutputWrite = $null
+  foreach ($outputPath in $OutputPaths) {
+    $item = Get-Item -Path $outputPath -ErrorAction SilentlyContinue
+    if ($item -and (-not $latestOutputWrite -or $item.LastWriteTimeUtc -gt $latestOutputWrite)) {
+      $latestOutputWrite = $item.LastWriteTimeUtc
+    }
+  }
+
+  if (-not $latestOutputWrite) {
+    return $true
+  }
+
+  return $latestSourceWrite -gt $latestOutputWrite
+}
+
+function Test-ProcessOlderThanFile {
+  param(
+    [System.Diagnostics.Process]$Process,
+    [string]$FilePath
+  )
+
+  if (-not $Process -or -not (Test-Path $FilePath)) {
+    return $false
+  }
+
+  try {
+    $processStart = $Process.StartTime.ToUniversalTime()
+    $fileWrite = (Get-Item -Path $FilePath).LastWriteTimeUtc
+    return $fileWrite -gt $processStart
+  }
+  catch {
+    return $false
+  }
+}
+
+function Test-ProcessOlderThanPaths {
+  param(
+    [System.Diagnostics.Process]$Process,
+    [string[]]$Paths
+  )
+
+  if (-not $Process) {
+    return $false
+  }
+
+  try {
+    $processStart = $Process.StartTime.ToUniversalTime()
+    $latestWrite = Get-LatestWriteTime -Paths $Paths
+    if (-not $latestWrite) {
+      return $false
+    }
+
+    return $latestWrite -gt $processStart
+  }
+  catch {
+    return $false
+  }
+}
+
 $appDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $url = "http://127.0.0.1:4183/"
 $port = 4183
@@ -103,6 +239,7 @@ $apiPort = 8787
 $tools = Resolve-NodeTooling
 $serverScript = Join-Path $appDir "scripts\serve-static-app.mjs"
 $apiServerEntry = Join-Path $appDir "server\dist\index.js"
+$serverDistDir = Join-Path $appDir "server\dist"
 $runtimeDir = Join-Path $appDir ".runtime"
 $apiStdout = Join-Path $runtimeDir "api-server.out.log"
 $apiStderr = Join-Path $runtimeDir "api-server.err.log"
@@ -124,6 +261,17 @@ if ($Check) {
 
 Set-Location $appDir
 $distIndex = Join-Path $appDir "app\dist\index.html"
+$appDistDir = Join-Path $appDir "app\dist"
+$serverSources = @(
+  (Join-Path $appDir "server\src"),
+  (Join-Path $appDir "server\package.json"),
+  (Join-Path $appDir "package.json")
+)
+$appSources = @(
+  (Join-Path $appDir "app\src"),
+  (Join-Path $appDir "app\package.json"),
+  (Join-Path $appDir "package.json")
+)
 
 Write-Host "=========================================="
 Write-Host "Vector Control Hub Launcher"
@@ -143,17 +291,37 @@ if (-not (Test-Path (Join-Path $appDir "node_modules"))) {
   Write-Host ""
 }
 
-if ($Rebuild -or -not (Test-Path $distIndex) -or -not (Test-Path $apiServerEntry)) {
+$needsBuild = $Rebuild -or -not (Test-Path $apiServerEntry) -or -not (Test-Path $distIndex)
+
+if ($needsBuild) {
   Write-Host "Building the latest app bundle..."
   & $tools.NpmCmd run build
   if ($LASTEXITCODE -ne 0) {
     throw "Build failed."
   }
+  Stop-ListeningProcess -Port $apiPort
+  Stop-ListeningProcess -Port $port
   Write-Host ""
 }
 else {
   Write-Host "Using the existing built app bundle."
-  Write-Host "Run with -Rebuild if you want a fresh production build first."
+  Write-Host "Use refresh-app.bat after code changes."
+  Write-Host ""
+}
+
+$apiProcess = Get-PortProcess -Port $apiPort
+if (Test-ProcessOlderThanPaths -Process $apiProcess -Paths @($serverDistDir)) {
+  Write-Host "The running API server is older than the current backend build. Restarting it..."
+  Stop-ListeningProcess -Port $apiPort
+  $apiProcess = $null
+  Write-Host ""
+}
+
+$appProcess = Get-PortProcess -Port $port
+if (Test-ProcessOlderThanPaths -Process $appProcess -Paths @($appDistDir)) {
+  Write-Host "The running app server is older than the current frontend build. Restarting it..."
+  Stop-ListeningProcess -Port $port
+  $appProcess = $null
   Write-Host ""
 }
 

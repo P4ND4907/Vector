@@ -7,13 +7,16 @@ import type {
   DiagnosticReport,
   IntegrationStatus,
   NotificationItem,
+  OptionalModules,
   PairingCandidate,
   Robot,
   RoamSession,
   Routine,
   SavedPhrase,
+  SupportReport,
   VisionEvent
 } from "@/types";
+import { buildFeatureFlags, buildOptionalFeatureList } from "@/lib/optional-features";
 
 const buildSnapshotDataUrl = (label: string, accent: string) => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360">
@@ -317,9 +320,52 @@ const aiCommandHistory: AiCommandHistoryItem[] = [
   }
 ];
 
+const supportReports: SupportReport[] = [];
+
+const optionalModules: OptionalModules = {
+  dashboard: {
+    enabled: true,
+    description: "Main control center UI",
+    features: [
+      "battery_status",
+      "movement_joystick",
+      "command_history",
+      "routine_builder",
+      "camera_panel_optional"
+    ],
+    endpoints: ["/robot/status", "/robot/move", "/robot/dock", "/robot/stop"]
+  },
+  wirepodExpansion: {
+    enabled: true,
+    description: "Custom app endpoints layered on top of WirePod",
+    features: [
+      "routine_start",
+      "business_notify",
+      "ai_chat",
+      "automation_trigger",
+      "status_broadcast"
+    ],
+    endpoints: ["/routine/start", "/business/notify", "/ai/chat", "/automation/trigger"]
+  },
+  aiBrain: {
+    enabled: true,
+    description: "Chat, memory, and context-aware responses",
+    features: [
+      "chat_responses",
+      "user_memory",
+      "conversation_context",
+      "fallback_to_basic_commands"
+    ],
+    endpoints: ["/ai/chat", "/ai/memory/save", "/ai/memory/get"]
+  }
+};
+
 export const initialSnapshot: AppSnapshot = {
   robot,
   integration,
+  optionalModules,
+  optionalFeatureList: buildOptionalFeatureList(optionalModules),
+  featureFlags: buildFeatureFlags(optionalModules),
   savedProfiles: [
     {
       id: robot.id,
@@ -359,6 +405,7 @@ export const initialSnapshot: AppSnapshot = {
   roamSessions,
   automationControl,
   availableRobots,
+  supportReports,
   queuedAnimations: ["curious-peek"],
   driveState: {
     speed: 55,

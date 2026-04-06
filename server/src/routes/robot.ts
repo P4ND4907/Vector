@@ -162,6 +162,18 @@ export const createRobotRouter = (controller: RobotController) => {
     response.send(Buffer.from(asset.buffer));
   }));
 
+  router.delete("/camera/photo/:photoId", asyncRoute(async (request: Request, response: Response) => {
+    const photoId = Array.isArray(request.params.photoId) ? request.params.photoId[0] : request.params.photoId;
+    const result = await controller.deletePhoto(photoId);
+    response.json({
+      snapshots: result.snapshots,
+      latestSnapshot: result.latestSnapshot,
+      syncedCount: result.syncedCount,
+      note: result.note,
+      streamUrl: await controller.getCameraStreamUrl()
+    });
+  }));
+
   router.get("/camera/stream", asyncRoute(async (_request: Request, response: Response) => {
     const streamUrl = await controller.getCameraStreamUrl();
     if (!streamUrl) {

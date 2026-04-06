@@ -3,6 +3,8 @@
   "description": "Local-first dashboard for controlling an Anki / DDL Vector robot through WirePod.",
   "private": true,
   "version": "0.1.0",
+  "author": "P4ND4907",
+  "main": "desktop/main.mjs",
   "license": "MIT",
   "homepage": "https://github.com/P4ND4907/Vector",
   "repository": {
@@ -34,6 +36,56 @@
     "build": "npm run build --workspace app && npm run build --workspace server",
     "preview": "powershell -ExecutionPolicy Bypass -File ./Launch-Vector-Control-Hub.ps1 -NoOpen",
     "typecheck": "npm run typecheck --workspace app && npm run typecheck --workspace server",
-    "lint": "npm run typecheck"
+    "lint": "npm run typecheck",
+    "desktop:assets": "node ./scripts/generate-desktop-icons.mjs",
+    "desktop:dev": "npm run desktop:assets && npm run build && electron .",
+    "desktop:pack": "npm run desktop:assets && npm run build && electron-builder --dir",
+    "desktop:dist": "npm run desktop:assets && npm run build && electron-builder --win nsis portable",
+    "release:windows": "npm run desktop:dist"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "electron": "^41.1.1",
+    "electron-builder": "^26.8.1",
+    "to-ico": "^1.1.5"
+  },
+  "build": {
+    "appId": "com.vectorcontrolhub.app",
+    "productName": "Vector Control Hub",
+    "directories": {
+      "app": ".",
+      "buildResources": "build-resources",
+      "output": "dist-electron"
+    },
+    "files": [
+      "desktop/**/*",
+      "app/dist/**/*",
+      "server/dist/**/*",
+      "scripts/serve-static-app.mjs",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "desktop/main.mjs"
+    },
+    "asar": true,
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "signAndEditExecutable": false,
+      "icon": "build-resources/icons/vector-control-hub.ico"
+    },
+    "nsis": {
+      "artifactName": "Vector-Control-Hub-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Vector Control Hub"
+    },
+    "portable": {
+      "artifactName": "Vector-Control-Hub-Portable-${version}-${arch}.${ext}"
+    }
   }
 }

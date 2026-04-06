@@ -21,7 +21,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "vector-control-hub-store",
-      version: 3,
+      version: 4,
       partialize: partializeState,
       merge: (persistedState, currentState) =>
         mergePersistedState(currentState as AppState, persistedState as PersistedSlice | undefined)

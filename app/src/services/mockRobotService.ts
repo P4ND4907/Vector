@@ -213,6 +213,66 @@ export const mockRobotService = {
     };
   },
 
+  async syncPhotos(): Promise<
+    RobotCommandResult<{
+      snapshots: CameraSnapshot[];
+      latestSnapshot?: CameraSnapshot;
+      syncedCount: number;
+      note: string;
+    }>
+  > {
+    await wait(320);
+    const snapshot: CameraSnapshot = {
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      label: "Synced mock robot photo",
+      dataUrl: buildCameraFrame("Synced mock robot photo", "#3e5fb8"),
+      motionScore: Math.floor(Math.random() * 50) + 15
+    };
+
+    return {
+      ok: true,
+      message: "Mock photo library synced.",
+      data: {
+        snapshots: [snapshot],
+        latestSnapshot: snapshot,
+        syncedCount: 1,
+        note: "Mock photo library synced."
+      }
+    };
+  },
+
+  async deletePhoto(
+    photoId: string,
+    snapshots: CameraSnapshot[]
+  ): Promise<
+    RobotCommandResult<{
+      snapshots: CameraSnapshot[];
+      latestSnapshot?: CameraSnapshot;
+      syncedCount: number;
+      note: string;
+    }>
+  > {
+    await wait(220);
+    const remaining = snapshots.filter((snapshot) => snapshot.id !== photoId && snapshot.remoteId !== photoId);
+    const deletedCount = snapshots.length - remaining.length;
+
+    if (!deletedCount) {
+      throw new Error("That photo could not be found.");
+    }
+
+    return {
+      ok: true,
+      message: "Mock photo removed.",
+      data: {
+        snapshots: remaining,
+        latestSnapshot: remaining[0],
+        syncedCount: deletedCount,
+        note: "Mock photo removed."
+      }
+    };
+  },
+
   async saveRoutine(routine: Routine) {
     await wait(280);
     return {

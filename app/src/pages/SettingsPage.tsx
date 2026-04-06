@@ -1,13 +1,19 @@
 import { useEffect, useState, type ChangeEvent } from "react";
-import { Bot, Download, MoonStar, RotateCcw, SunMedium, Upload } from "lucide-react";
+import { Bot, Download, MessageSquareWarning, MoonStar, RotateCcw, SunMedium, Upload, Wrench } from "lucide-react";
+import { FeatureAvailabilityCard } from "@/components/settings/FeatureAvailabilityCard";
+import { OptionalModulesCard } from "@/components/settings/OptionalModulesCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Range } from "@/components/ui/range";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/cn";
+import { formatTimestamp } from "@/lib/format";
+import { robotService } from "@/services/robotService";
 import { themePresets } from "@/lib/themes";
 import { useAppStore } from "@/store/useAppStore";
+import type { WirePodWeatherConfig } from "@/types";
 
 const downloadText = (filename: string, text: string) => {
   const blob = new Blob([text], { type: "application/json" });
@@ -22,19 +28,67 @@ const downloadText = (filename: string, text: string) => {
 export function SettingsPage() {
   const settings = useAppStore((state) => state.settings);
   const integration = useAppStore((state) => state.integration);
+  const optionalModules = useAppStore((state) => state.optionalModules);
+  const optionalFeatureList = useAppStore((state) => state.optionalFeatureList);
+  const featureFlags = useAppStore((state) => state.featureFlags);
   const logs = useAppStore((state) => state.logs);
+  const supportReports = useAppStore((state) => state.supportReports);
   const updateSettings = useAppStore((state) => state.updateSettings);
   const exportState = useAppStore((state) => state.exportState);
   const importState = useAppStore((state) => state.importState);
   const clearLogs = useAppStore((state) => state.clearLogs);
+  const quickRepair = useAppStore((state) => state.quickRepair);
+  const reportProblem = useAppStore((state) => state.reportProblem);
+  const supportState = useAppStore((state) => state.actionStates.support);
 
   const [customEndpoint, setCustomEndpoint] = useState(settings.customWirePodEndpoint);
   const [robotSerial, setRobotSerial] = useState(settings.robotSerial);
+  const [problemSummary, setProblemSummary] = useState("");
+  const [problemDetails, setProblemDetails] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [weatherConfig, setWeatherConfig] = useState<WirePodWeatherConfig>({
+    enable: false,
+    provider: "",
+    key: "",
+    unit: ""
+  });
+  const [weatherStatus, setWeatherStatus] = useState("Checking WirePod weather setup...");
+  const [weatherSaving, setWeatherSaving] = useState(false);
 
   useEffect(() => {
     setCustomEndpoint(settings.customWirePodEndpoint);
     setRobotSerial(settings.robotSerial);
   }, [settings.customWirePodEndpoint, settings.robotSerial]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void robotService
+      .getWirePodWeatherConfig()
+      .then((config) => {
+        if (cancelled) {
+          return;
+        }
+
+        setWeatherConfig(config);
+        setWeatherStatus(
+          config.enable
+            ? `Wake-word weather is configured through ${config.provider || "your selected provider"}.`
+            : "Wake-word weather is off in WirePod, so Vector will say the weather API is not configured."
+        );
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        setWeatherStatus("WirePod weather settings could not be read right now.");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -116,6 +170,82 @@ export function SettingsPage() {
             <Button onClick={() => void updateSettings({ robotSerial })}>Save serial</Button>
           </div>
 
+          <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-4">
+            <div className="text-sm font-semibold">Voice weather setup</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              Typed weather in the app works without an external key. Wake-word weather on Vector still depends on WirePod having a weather provider API key.
+            </div>
+            <div className="mt-3 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-black)] px-4 py-3 text-sm text-muted-foreground">
+              {weatherStatus}
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-[0.8fr_1.2fr]">
+              <div className="space-y-2">
+                <label className="text-sm text-muted-foreground">Provider</label>
+                <select
+                  className="flex h-11 w-full rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-black)] px-3 text-sm outline-none transition focus:border-primary/60"
+                  value={weatherConfig.provider}
+                  onChange={(event) =>
+                    setWeatherConfig((current) => ({
+                      ...current,
+                      provider: event.target.value
+                    }))
+                  }
+                >
+                  <option value="">Disabled</option>
+                  <option value="openweathermap.org">OpenWeatherMap</option>
+                  <option value="weatherapi.com">WeatherAPI</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm text-muted-foreground">API key</label>
+                <Input
+                  type="password"
+                  value={weatherConfig.key}
+                  placeholder="Paste your weather provider key"
+                  onChange={(event) =>
+                    setWeatherConfig((current) => ({
+                      ...current,
+                      key: event.target.value
+                    }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                onClick={async () => {
+                  setWeatherSaving(true);
+
+                  try {
+                    const nextConfig = await robotService.updateWirePodWeatherConfig({
+                      provider: weatherConfig.provider,
+                      key: weatherConfig.key,
+                      unit: weatherConfig.unit
+                    });
+
+                    setWeatherConfig(nextConfig);
+                    setWeatherStatus(
+                      nextConfig.enable
+                        ? `Wake-word weather is configured through ${nextConfig.provider || "your selected provider"}.`
+                        : "Wake-word weather is off in WirePod, so Vector will say the weather API is not configured."
+                    );
+                  } catch (error) {
+                    setWeatherStatus(
+                      error instanceof Error
+                        ? error.message
+                        : "WirePod weather settings could not be saved."
+                    );
+                  } finally {
+                    setWeatherSaving(false);
+                  }
+                }}
+                disabled={weatherSaving}
+              >
+                {weatherSaving ? "Saving weather setup..." : "Save weather setup"}
+              </Button>
+            </div>
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-4">
               <div className="flex items-center justify-between gap-3">
@@ -133,8 +263,8 @@ export function SettingsPage() {
             <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold">Reconnect on startup</div>
-                  <div className="text-xs text-muted-foreground">Restore the last robot target automatically.</div>
+                  <div className="text-sm font-semibold">Stay connected automatically</div>
+                  <div className="text-xs text-muted-foreground">Reconnect on launch and keep retrying if the live robot link drops.</div>
                 </div>
                 <Switch
                   checked={settings.reconnectOnStartup}
@@ -261,6 +391,13 @@ export function SettingsPage() {
       </Card>
 
       <div className="grid gap-4">
+        <FeatureAvailabilityCard
+          optionalFeatureList={optionalFeatureList}
+          featureFlags={featureFlags}
+        />
+
+        <OptionalModulesCard optionalModules={optionalModules} />
+
         <Card>
           <CardHeader>
             <CardTitle>Startup screen</CardTitle>
@@ -276,10 +413,105 @@ export function SettingsPage() {
                 On launch, Vector Control Hub now starts on a simple connect screen whose only job is linking to your robot.
               </p>
             </div>
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <MoonStar className="h-4 w-4 text-primary" />
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <MoonStar className="h-4 w-4 text-primary" />
               Theme, palette, reconnect, endpoint, and serial preferences still persist locally.
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Feedback and support</CardTitle>
+            <CardDescription>
+              Normal users can report a problem here, and the app will try safe local repairs first before saving the report.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-4 text-sm text-muted-foreground">
+              Quick repair can safely try known local fixes like starting WirePod, refreshing the robot link, and re-applying voice defaults. It will not silently change advanced robot settings or claim a repair worked when it did not.
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={quickRepair} disabled={supportState.status === "loading"}>
+                <Wrench className="h-4 w-4" />
+                {supportState.status === "loading" ? "Running quick repair..." : "Run quick repair"}
+              </Button>
+            </div>
+
+            <div className="grid gap-4">
+              <div className="space-y-2">
+                <label className="text-sm text-muted-foreground">Problem summary</label>
+                <Input
+                  value={problemSummary}
+                  placeholder="Voice commands stopped working after reconnecting."
+                  onChange={(event) => setProblemSummary(event.target.value)}
+                />
               </div>
+
+              <div className="space-y-2">
+                <label className="text-sm text-muted-foreground">What happened</label>
+                <Textarea
+                  value={problemDetails}
+                  placeholder="Tell the app what you tried, what Vector did, and what you expected."
+                  onChange={(event) => setProblemDetails(event.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm text-muted-foreground">Contact email (optional)</label>
+                <Input
+                  value={contactEmail}
+                  placeholder="name@example.com"
+                  onChange={(event) => setContactEmail(event.target.value)}
+                />
+              </div>
+
+              <Button
+                onClick={async () => {
+                  await reportProblem({
+                    summary: problemSummary,
+                    details: problemDetails,
+                    contactEmail
+                  });
+                  setProblemSummary("");
+                  setProblemDetails("");
+                  setContactEmail("");
+                }}
+                disabled={supportState.status === "loading" || problemSummary.trim().length < 4 || problemDetails.trim().length < 8}
+              >
+                <MessageSquareWarning className="h-4 w-4" />
+                Save problem report and try repair
+              </Button>
+            </div>
+
+            <p className="text-sm text-muted-foreground">
+              {supportState.message ||
+                "The app saves reports locally with the latest repair attempt, so issues stay readable instead of disappearing into raw logs."}
+            </p>
+
+            <div className="space-y-3">
+              {supportReports.length ? (
+                supportReports.slice(0, 3).map((report) => (
+                  <div key={report.id} className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold">{report.summary}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{formatTimestamp(report.createdAt)}</div>
+                      </div>
+                      <div className="rounded-full border border-[var(--surface-border)] px-3 py-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                        {report.repairResult.overallStatus}
+                      </div>
+                    </div>
+                    <p className="mt-3 text-sm text-muted-foreground">{report.repairResult.summary}</p>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-[var(--surface-border)] p-4 text-sm text-muted-foreground">
+                  No saved support reports yet.
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 

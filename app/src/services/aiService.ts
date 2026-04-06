@@ -1,5 +1,6 @@
 import { getJson, postJson } from "@/services/apiClient";
 import { mapAiCommandPreview, mapIntegration, mapRobot, type ServerIntegration, type ServerRobot } from "@/services/robotBackend";
+import { pauseTelemetry } from "@/services/robotService";
 import type { AiCommandPreview, Routine, Robot, IntegrationStatus } from "@/types";
 
 export interface AiRoutineDraft {
@@ -52,6 +53,7 @@ export const aiService = {
     fallbackRobot: Robot,
     fallbackIntegration: IntegrationStatus
   ) {
+    pauseTelemetry(12_000);
     const response = await postJson<AiCommandExecuteResponse>(
       "/api/ai/commands/execute",
       { prompt },

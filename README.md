@@ -22,9 +22,23 @@ It exists to make Vector easier to use day-to-day: one app for connection, drive
 This project is active and usable, but still evolving.
 
 - Core local dashboard flow works
+- First-run onboarding now handles the easy local WirePod setup inside the app
 - Mock mode is available for testing without a robot
 - WirePod is still required as the local backend bridge
 - Some advanced features are still being refined
+
+## Release Path
+
+This project now has a Phase 1 Windows release path.
+
+- Source download: good for advanced users and local testing
+- GitHub Release installer: the intended path for normal Windows testers
+- Long-term goal: one app experience with fewer separate setup steps
+
+Phase roadmap:
+
+- [Phase plan](./docs/PHASES.md)
+- [Release steps](./docs/RELEASING.md)
 
 ## Why This App Exists
 
@@ -63,6 +77,8 @@ Add these screenshots before a public post:
 | Camera | `docs/screenshots/camera.png` | Use either synced photos or an empty state |
 
 Tip: use one clean connected state and one honest offline state.
+
+The `docs/screenshots/` folder is already in the repo so these paths can be dropped in directly.
 
 ## How It Works
 
@@ -113,6 +129,16 @@ What you should never do:
 
 ## Quick Start
 
+### Best Download Option
+
+If you just want to try the app on Windows, use a GitHub Release build when one is available.
+
+If you are downloading the source code directly from GitHub instead:
+
+- install Node.js 20+
+- extract the repo
+- double-click `start-app.bat`
+
 ### Easiest Launch
 
 Use:
@@ -136,6 +162,20 @@ Both launchers call the same PowerShell script and do only visible, local startu
 
 ```bash
 npm install
+```
+
+### Windows Installer Build
+
+To build the Windows installer and portable app locally:
+
+```bash
+npm run release:windows
+```
+
+That writes installer files to:
+
+```text
+dist-electron/
 ```
 
 ## Environment Setup
@@ -219,9 +259,10 @@ For a normal user, the intended path is:
 1. Start WirePod locally
 2. Launch Vector Control Hub
 3. Keep Mock Mode off
-4. Use the startup connection screen
-5. Scan or reconnect to the saved robot
-6. Open the dashboard once Vector answers
+4. If needed, use `Finish local setup automatically` on the startup screen
+5. If the robot has never been paired to WirePod, use `Open robot pairing portal` once for the one-time robot handshake
+6. Scan or reconnect to the saved robot
+7. Open the dashboard once Vector answers
 
 After that, most daily use should happen in this app.
 
@@ -272,6 +313,18 @@ Main launcher script used by the `.bat` wrappers.
 
 Small local static file server used for the built frontend.
 
+## GitHub Releases
+
+This repo includes GitHub Actions workflows for:
+
+- validating the app on pushes and pull requests
+- building Windows release artifacts on demand
+- attaching Windows artifacts to tagged GitHub Releases
+
+If you want to publish a new Windows release, see:
+
+- [docs/RELEASING.md](./docs/RELEASING.md)
+
 ## Troubleshooting
 
 ### The app says "Vector brain offline"
@@ -295,7 +348,7 @@ Check whether Vector is still on the charger. Some movement commands can appear 
 
 ### Camera page shows no photos
 
-Ask Vector to take a photo, then use the camera page action to capture and sync again.
+Ask Vector to take a photo, then open `Photos` and use `Retrieve latest photo` or `Sync saved photos`.
 
 ## FAQ
 
@@ -321,6 +374,7 @@ No. It is optional and should only be used when you want a fallback or demo path
 - Speech and audio behavior may vary depending on the local Vector and WirePod setup
 - Advanced vision and object detection are not finished yet
 - This repo is currently Windows-first in its helper scripts
+- Real robot control still depends on local WirePod in Phase 1
 
 ## Public Sharing Checklist
 
@@ -331,3 +385,7 @@ Before publishing:
 3. Add screenshots to this README
 4. Verify the launcher still works on a clean machine
 5. Confirm Mock Mode is off in any "real robot" screenshots
+
+For the longer version, see:
+
+- [docs/PUBLIC_RELEASE_CHECKLIST.md](./docs/PUBLIC_RELEASE_CHECKLIST.md)

@@ -1,5 +1,14 @@
 import { Buffer } from "node:buffer";
 import { buildOfflineRobot, createLocalStore } from "../db/localStore.js";
+import {
+  inferSuggestedArea,
+  isRecentDuplicateGap,
+  normalizeCommandPrompt
+} from "../services/commandGapService.js";
+import { saveAiMemory as mergeAiMemory } from "../services/aiBrainService.js";
+import { createLocalRepairService } from "../services/localRepairService.js";
+import { buildVoiceDiagnostics } from "../services/voiceDiagnosticsService.js";
+import { buildWirePodSetupStatus } from "../services/wirepodSetupService.js";
 import { createWirePodService, batteryVoltageToPercent } from "../services/wirepodService.js";
 import { createMockRobotController } from "./mockRobotController.js";
 import {
@@ -16,15 +25,22 @@ import type {
   CameraImageAsset,
   CameraSnapshotRecord,
   CameraSyncResult,
+  CommandGapRecord,
   CommandLogRecord,
   DiagnosticCheckRecord,
   DiagnosticReportRecord,
   DiscoveredRobot,
+  RepairResultRecord,
+  RepairStepRecord,
   RobotController,
   RobotIntegrationInfo,
   RobotStatus,
   RoamSessionRecord,
-  RoutineRecord
+  RoutineRecord,
+  SupportReportRecord,
+  WirePodSetupStatusRecord,
+  WirePodWeatherConfigRecord,
+  VoiceDiagnosticsRecord
 } from "./types.js";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -36,6 +52,7 @@ export const createHybridRobotController = (options: {
 }): RobotController => {
   const store = createLocalStore(options.dataFilePath);
   const fallback = createMockRobotController();
+  const localRepair = createLocalRepairService();
   let busyUntil = 0;
   let busyActivity = "Awaiting your next command.";
   let lastHeadAngle = 0;
@@ -101,8 +118,16 @@ export const createHybridRobotController = (options: {
   const getLogs = () => store.getState().logs;
   const getRoutines = () => store.getState().routines;
   const getSnapshots = () => store.getState().snapshots;
+  const getSupportReports = () => store.getState().supportReports;
+  const getAiMemory = () => store.getState().aiMemory;
+  const getCommandGaps = () => store.getState().commandGaps;
   const getAutomationControl = () => store.getState().automationControl;
   const getRoamSessions = () => store.getState().roamSessions;
+  const getSelectedSerial = () =>
+    getSettings().serial ||
+    cachedRobot.serial ||
+    getProfile().selectedSerial ||
+    lastIntegration.selectedSerial;
 
   const latestSuccessfulCommand = () => getLogs().find((log) => log.status === "success");
   const latestFailedCommand = () => getLogs().find((log) => log.status === "error");
@@ -133,6 +158,45 @@ export const createHybridRobotController = (options: {
       });
     }
     return log;
+  };
+
+  const saveCommandGap = (payload: {
+    source: CommandGapRecord["source"];
+    prompt: string;
+    normalizedPrompt?: string;
+    category: CommandGapRecord["category"];
+    note: string;
+    suggestedArea?: string;
+    heardAt?: string;
+    matchedIntent?: string;
+  }) => {
+    const normalizedPrompt = payload.normalizedPrompt || normalizeCommandPrompt(payload.prompt);
+    const recentDuplicate = isRecentDuplicateGap(getCommandGaps(), {
+      source: payload.source,
+      category: payload.category,
+      normalizedPrompt,
+      matchedIntent: payload.matchedIntent
+    });
+
+    if (recentDuplicate) {
+      return recentDuplicate;
+    }
+
+    const record: CommandGapRecord = {
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      source: payload.source,
+      prompt: payload.prompt.trim(),
+      normalizedPrompt,
+      category: payload.category,
+      note: payload.note.trim(),
+      suggestedArea: payload.suggestedArea || inferSuggestedArea(payload.prompt),
+      heardAt: payload.heardAt,
+      matchedIntent: payload.matchedIntent
+    };
+
+    store.saveCommandGaps([record, ...getCommandGaps()]);
+    return record;
   };
 
   const buildRealRobot = ({
@@ -229,6 +293,82 @@ export const createHybridRobotController = (options: {
       suggestions.push("No serial is saved yet. Scan for robots or enter the serial in Settings.");
     }
     return suggestions;
+  };
+
+  const buildCurrentVoiceDiagnostics = async (robotOverride?: RobotStatus): Promise<VoiceDiagnosticsRecord> => {
+    if (getSettings().mockMode) {
+      return fallback.getVoiceDiagnostics() as VoiceDiagnosticsRecord;
+    }
+
+    const robot = robotOverride ?? cachedRobot;
+    const serial = getSelectedSerial();
+
+    if (!serial) {
+      return {
+        wakeWordMode: "unknown",
+        locale: "Unknown",
+        volume: robot.volume ?? 0,
+        status: "attention",
+        summary: "No robot serial is saved yet, so voice settings cannot be checked.",
+        troubleshooting: ["Save the robot serial first so voice setup can be targeted correctly."]
+      };
+    }
+
+    let sdkSettings;
+    let logsText = "";
+    let debugLogsText = "";
+
+    try {
+      sdkSettings = await wirePod.getSdkSettings(serial);
+    } catch {
+      sdkSettings = undefined;
+    }
+
+    const [logsResult, debugResult] = await Promise.allSettled([
+      wirePod.getLogs(),
+      wirePod.getDebugLogs()
+    ]);
+
+    if (logsResult.status === "fulfilled") {
+      logsText = logsResult.value;
+    }
+
+    if (debugResult.status === "fulfilled") {
+      debugLogsText = debugResult.value;
+    }
+
+    return buildVoiceDiagnostics({
+      integration: lastIntegration,
+      robot,
+      sdkSettings,
+      logsText,
+      debugLogsText
+    });
+  };
+
+  const getCurrentWirePodSetupStatus = async (): Promise<WirePodSetupStatusRecord> => {
+    if (getSettings().mockMode) {
+      return fallback.getWirePodSetupStatus() as WirePodSetupStatusRecord;
+    }
+
+    try {
+      const [config, sttInfo, sdkInfo] = await Promise.all([
+        wirePod.getConfig().catch(() => undefined),
+        wirePod.getSttInfo().catch(() => undefined),
+        wirePod.getSdkInfo().catch(() => undefined)
+      ]);
+
+      return buildWirePodSetupStatus({
+        reachable: true,
+        config,
+        sttInfo,
+        sdkInfo
+      });
+    } catch {
+      return buildWirePodSetupStatus({
+        reachable: false
+      });
+    }
   };
 
   const refreshWirePodStatus = async (payload?: Partial<RobotStatus>) => {
@@ -398,8 +538,220 @@ export const createHybridRobotController = (options: {
   const getActiveRoamSession = () =>
     getRoamSessions().find((session) => session.id === getAutomationControl().activeSessionId);
 
+  const buildRepairStep = (
+    label: string,
+    status: RepairStepRecord["status"],
+    details: string
+  ): RepairStepRecord => ({
+    id: crypto.randomUUID(),
+    label,
+    status,
+    details
+  });
+
+  const refreshVoiceDefaultsInline = async (serial: string, robot: RobotStatus) => {
+    const currentSettings = await wirePod.getSdkSettings(serial).catch(() => undefined);
+    const targetVolume = Math.max(
+      4,
+      Math.min(5, currentSettings?.master_volume ?? robot.volume ?? 4)
+    );
+
+    await wirePod.setButtonHeyVector(serial);
+    await wait(250);
+    await wirePod.setLocale(serial, "en-US");
+    await wait(250);
+    await wirePod.setVolume(serial, targetVolume);
+
+    return targetVolume;
+  };
+
+  const runQuickRepair = async (): Promise<RepairResultRecord> => {
+    if (getSettings().mockMode) {
+      const result: RepairResultRecord = {
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+        overallStatus: "repaired",
+        summary: "Mock mode is active, so the quick repair path only refreshed local test state.",
+        steps: [
+          buildRepairStep(
+            "Mock mode",
+            "success",
+            "No live Vector repair was needed because the app is currently running in mock mode."
+          )
+        ]
+      };
+      pushLog(makeLog("quick-repair", { mode: "mock" }, "success", result.summary));
+      return result;
+    }
+
+    const steps: RepairStepRecord[] = [];
+    let robot = await refreshWirePodStatus();
+
+    if (!lastIntegration.wirePodReachable) {
+      const startResult = await localRepair.tryStartWirePod();
+      steps.push(
+        buildRepairStep(
+          "Start local Vector brain",
+          startResult.launched ? "success" : startResult.attempted ? "warn" : "fail",
+          startResult.executablePath
+            ? `${startResult.message} (${startResult.executablePath})`
+            : startResult.message
+        )
+      );
+
+      if (startResult.launched) {
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          await wait(1_250);
+          robot = await refreshWirePodStatus();
+          if (lastIntegration.wirePodReachable) {
+            break;
+          }
+        }
+      }
+    } else {
+      steps.push(
+        buildRepairStep(
+          "Local Vector brain",
+          "success",
+          "WirePod was already reachable, so no restart was needed."
+        )
+      );
+    }
+
+    robot = await refreshWirePodStatus();
+    steps.push(
+      buildRepairStep(
+        "Detect WirePod",
+        lastIntegration.wirePodReachable ? "success" : "fail",
+        lastIntegration.wirePodReachable
+          ? `The app can reach WirePod at ${lastIntegration.wirePodBaseUrl}.`
+          : lastIntegration.note || "WirePod is still offline after the repair attempt."
+      )
+    );
+
+    if (lastIntegration.wirePodReachable) {
+      if (!robot.isConnected) {
+        const serial =
+          robot.serial ||
+          cachedRobot.serial ||
+          getSettings().serial ||
+          getProfile().selectedSerial ||
+          lastIntegration.selectedSerial;
+
+        if (serial) {
+          try {
+            await wirePod.wake(serial);
+            await wait(1_200);
+            robot = await refreshWirePodStatus();
+            steps.push(
+              buildRepairStep(
+                "Wake robot link",
+                robot.isConnected ? "success" : "warn",
+                robot.isConnected
+                  ? `${robot.nickname ?? robot.name} responded after a wake signal.`
+                  : "Wake was sent, but Vector still is not answering local status checks."
+              )
+            );
+          } catch (error) {
+            steps.push(
+              buildRepairStep(
+                "Wake robot link",
+                "warn",
+                error instanceof Error ? error.message : "The wake signal could not be sent."
+              )
+            );
+          }
+        } else {
+          steps.push(
+            buildRepairStep(
+              "Wake robot link",
+              "warn",
+              "No robot serial is saved yet, so the repair path could not target a specific Vector."
+            )
+          );
+        }
+      } else {
+        steps.push(
+          buildRepairStep(
+            "Robot link",
+            "success",
+            `${robot.nickname ?? robot.name} was already responding through WirePod.`
+          )
+        );
+      }
+    }
+
+    robot = await refreshWirePodStatus();
+
+    if (robot.isConnected && robot.serial) {
+      try {
+        const targetVolume = await refreshVoiceDefaultsInline(robot.serial, robot);
+        robot = applyRobotState({
+          ...robot,
+          volume: targetVolume,
+          currentActivity: "Quick repair refreshed voice defaults."
+        });
+        steps.push(
+          buildRepairStep(
+            "Refresh voice defaults",
+            "success",
+            "Re-applied Hey Vector mode, English (US), and a safe speaker volume."
+          )
+        );
+      } catch (error) {
+        steps.push(
+          buildRepairStep(
+            "Refresh voice defaults",
+            "warn",
+            error instanceof Error ? error.message : "Voice defaults could not be refreshed."
+          )
+        );
+      }
+    }
+
+    const finalRobot = await refreshWirePodStatus();
+    const overallStatus: RepairResultRecord["overallStatus"] =
+      finalRobot.isConnected && lastIntegration.robotReachable
+        ? "repaired"
+        : lastIntegration.wirePodReachable
+          ? "partial"
+          : "failed";
+    const summary =
+      overallStatus === "repaired"
+        ? `${finalRobot.nickname ?? finalRobot.name} is back online and ready.`
+        : overallStatus === "partial"
+          ? "The local brain came back, but Vector still needs attention."
+          : "Quick repair could not restore the local Vector stack automatically.";
+
+    pushLog(
+      makeLog(
+        "quick-repair",
+        { overallStatus, wirePodReachable: lastIntegration.wirePodReachable, robotReachable: lastIntegration.robotReachable },
+        overallStatus === "failed" ? "error" : "success",
+        summary
+      )
+    );
+
+    return {
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      overallStatus,
+      summary,
+      steps
+    };
+  };
+
   return {
-    getStatus: async () => refreshWirePodStatus(),
+    getStatus: async () => {
+      if (Date.now() < busyUntil) {
+        return applyRobotState({
+          ...cachedRobot,
+          lastSeen: cachedRobot.lastSeen || new Date().toISOString()
+        });
+      }
+
+      return refreshWirePodStatus();
+    },
 
     getIntegrationInfo: () => ({
       ...syncIntegration(),
@@ -570,9 +922,10 @@ export const createHybridRobotController = (options: {
         () => fallback.speak({ text }) as CommandLogRecord,
         "Sending speech to Vector.",
         async (serial, robot) => {
-          if (robot.isDocked || robot.mood === "sleepy") {
+          setBusy("Speaking through Vector.", 9_500);
+          if (!robot.isConnected || robot.mood === "sleepy" || robot.connectionState !== "connected") {
             await wirePod.wake(serial).catch(() => undefined);
-            await wait(1200);
+            await wait(1800);
           }
           await wirePod.sayText(serial, text);
           return pushLog(makeLog("speak", { text }, "success", `Speaking: ${text}`));
@@ -584,7 +937,11 @@ export const createHybridRobotController = (options: {
         () => fallback.animation({ animationId }) as CommandLogRecord,
         "Playing animation.",
         async (serial) => {
-          const intent = animationIntentMap[animationId] ?? "intent_imperative_dance";
+          const intent =
+            animationIntentMap[animationId] ??
+            (animationId.startsWith("intent_") || animationId.startsWith("explore_")
+              ? animationId
+              : "intent_imperative_dance");
           await wirePod.playAnimation(serial, intent);
           return pushLog(
             makeLog("animation", { animationId, intent }, "success", `Animation intent sent for ${animationId}.`)
@@ -1019,6 +1376,194 @@ export const createHybridRobotController = (options: {
       return wirePod.getImage(serial, photoId, variant) as Promise<CameraImageAsset>;
     },
 
+    deletePhoto: async (photoId) => {
+      if (getSettings().mockMode) {
+        return fallback.deletePhoto(photoId) as CameraSyncResult;
+      }
+
+      const robot = await refreshWirePodStatus();
+      const serial =
+        robot.serial ||
+        cachedRobot.serial ||
+        getSettings().serial ||
+        getProfile().selectedSerial ||
+        lastIntegration.selectedSerial;
+
+      if (!serial) {
+        throw new Error("No robot serial is saved yet.");
+      }
+
+      const existingSnapshots = getSnapshots();
+      const targetSnapshot = existingSnapshots.find(
+        (snapshot) => snapshot.id === photoId || snapshot.remoteId === photoId
+      );
+
+      if (!targetSnapshot) {
+        throw new Error("That photo could not be found.");
+      }
+
+      if (targetSnapshot.remoteId && lastIntegration.wirePodReachable) {
+        await wirePod.deleteImage(serial, targetSnapshot.remoteId);
+      }
+
+      const snapshots = existingSnapshots.filter((snapshot) => snapshot.id !== targetSnapshot.id);
+      store.saveSnapshots(snapshots);
+      pushLog(
+        makeLog(
+          "photo-delete",
+          { photoId: targetSnapshot.remoteId ?? targetSnapshot.id },
+          "success",
+          "Photo deleted from the app library."
+        )
+      );
+
+      return {
+        snapshots,
+        latestSnapshot: snapshots[0],
+        syncedCount: 1,
+        note: "Photo deleted from the app library."
+      } satisfies CameraSyncResult;
+    },
+
+    getVoiceDiagnostics: async () => {
+      if (getSettings().mockMode) {
+        return fallback.getVoiceDiagnostics() as VoiceDiagnosticsRecord;
+      }
+
+      const robot = await refreshWirePodStatus();
+      return buildCurrentVoiceDiagnostics(robot);
+    },
+
+    repairVoiceSetup: async () =>
+      runMockOrThrow(
+        () => fallback.repairVoiceSetup() as CommandLogRecord,
+        "Refreshing WirePod voice defaults.",
+        async (serial, robot) => {
+          const targetVolume = await refreshVoiceDefaultsInline(serial, robot);
+
+          return pushLog(
+            makeLog(
+              "voice-repair",
+              { serial, locale: "en-US", wakeWordMode: "Hey Vector", volume: targetVolume },
+              "success",
+              "Re-applied WirePod voice defaults: Hey Vector button mode, English (US), and speaker volume."
+            ),
+            applyRobotState({
+              ...robot,
+              volume: targetVolume,
+              currentActivity: "Voice setup refreshed."
+            })
+          );
+        }
+      ),
+
+    getWirePodSetupStatus: async (): Promise<WirePodSetupStatusRecord> =>
+      getCurrentWirePodSetupStatus(),
+
+    finishWirePodSetup: async ({
+      language,
+      connectionMode,
+      port
+    }): Promise<WirePodSetupStatusRecord> => {
+      if (getSettings().mockMode) {
+        return fallback.finishWirePodSetup({
+          language,
+          connectionMode,
+          port
+        }) as WirePodSetupStatusRecord;
+      }
+
+      await wirePod.finishInitialSetup({
+        language: language?.trim() || "en-US",
+        connectionMode: connectionMode || "escape-pod",
+        port: port?.trim() || "443"
+      });
+      await wait(1_000);
+      await refreshWirePodStatus();
+
+      return getCurrentWirePodSetupStatus();
+    },
+
+    getWirePodWeatherConfig: async (): Promise<WirePodWeatherConfigRecord> => {
+      if (getSettings().mockMode) {
+        return fallback.getWirePodWeatherConfig() as WirePodWeatherConfigRecord;
+      }
+
+      try {
+        return await wirePod.getWeatherApiConfig();
+      } catch {
+        return {
+          enable: false,
+          provider: "",
+          key: "",
+          unit: ""
+        };
+      }
+    },
+
+    setWirePodWeatherConfig: async ({ provider, key, unit }): Promise<WirePodWeatherConfigRecord> => {
+      if (getSettings().mockMode) {
+        return fallback.setWirePodWeatherConfig({ provider, key, unit }) as WirePodWeatherConfigRecord;
+      }
+
+      return wirePod.setWeatherApiConfig({
+        provider: provider.trim(),
+        key: key.trim(),
+        unit: unit?.trim()
+      });
+    },
+
+    quickRepair: async () => runQuickRepair(),
+
+    getSupportReports: () => getSupportReports(),
+
+    getAiMemory: () => getAiMemory(),
+
+    saveAiMemory: async ({ key, value }) => {
+      const nextMemory = mergeAiMemory(getAiMemory(), key, value);
+      store.saveAiMemory(nextMemory);
+      pushLog(
+        makeLog(
+          "ai-memory-save",
+          { key },
+          "success",
+          `Saved AI memory for ${key}.`
+        )
+      );
+      return nextMemory;
+    },
+
+    getCommandGaps: () => getCommandGaps(),
+
+    recordCommandGap: async (payload) => saveCommandGap(payload),
+
+    reportProblem: async ({ summary, details, contactEmail }) => {
+      const repairResult = await runQuickRepair();
+      const robot = await refreshWirePodStatus();
+      const supportReport: SupportReportRecord = {
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+        summary: summary.trim(),
+        details: details.trim(),
+        contactEmail: contactEmail?.trim() || undefined,
+        robotName: robot.nickname ?? robot.name,
+        integrationNote: lastIntegration.note,
+        repairResult
+      };
+
+      store.saveSupportReports([supportReport, ...getSupportReports()]);
+      pushLog(
+        makeLog(
+          "support-report",
+          { reportId: supportReport.id, summary: supportReport.summary },
+          "success",
+          "Problem report saved locally with the latest repair attempt."
+        )
+      );
+
+      return supportReport;
+    },
+
     runDiagnostics: async () => {
       if (getSettings().mockMode) {
         const report = fallback.runDiagnostics() as DiagnosticReportRecord;
@@ -1027,9 +1572,18 @@ export const createHybridRobotController = (options: {
       }
 
       const robot = await refreshWirePodStatus();
+      const voiceDiagnostics = await buildCurrentVoiceDiagnostics(robot);
       const successLog = latestSuccessfulCommand();
       const failedLog = latestFailedCommand();
-      const troubleshooting = buildTroubleshooting();
+      const troubleshooting = Array.from(
+        new Set([...buildTroubleshooting(), ...voiceDiagnostics.troubleshooting])
+      );
+      const voiceCheckStatus =
+        voiceDiagnostics.status === "healthy"
+          ? "pass"
+          : voiceDiagnostics.status === "attention"
+            ? "warn"
+            : "fail";
       const checks: DiagnosticCheckRecord[] = [
         {
           id: crypto.randomUUID(),
@@ -1081,6 +1635,63 @@ export const createHybridRobotController = (options: {
         },
         {
           id: crypto.randomUUID(),
+          label: "Wake word",
+          category: "audio" as const,
+          status:
+            voiceDiagnostics.wakeWordMode === "hey-vector"
+              ? "pass"
+              : voiceDiagnostics.wakeWordMode === "unknown"
+                ? "warn"
+                : "fail",
+          metric:
+            voiceDiagnostics.wakeWordMode === "hey-vector"
+              ? "Hey Vector"
+              : voiceDiagnostics.wakeWordMode === "alexa"
+                ? "Alexa"
+                : "Unknown",
+          details:
+            voiceDiagnostics.wakeWordMode === "hey-vector"
+              ? "The robot is configured to listen for Hey Vector."
+              : "The wake-word mode should be switched back to Hey Vector for normal testing."
+        },
+        {
+          id: crypto.randomUUID(),
+          label: "Speech locale",
+          category: "audio" as const,
+          status: /^en(-|$)/i.test(voiceDiagnostics.locale) ? "pass" : "warn",
+          metric: voiceDiagnostics.locale,
+          details: /^en(-|$)/i.test(voiceDiagnostics.locale)
+            ? "English locale is enabled for voice commands."
+            : "Switch to English (US) first if voice commands are inconsistent."
+        },
+        {
+          id: crypto.randomUUID(),
+          label: "Speaker volume",
+          category: "audio" as const,
+          status:
+            voiceDiagnostics.volume === 0
+              ? "fail"
+              : voiceDiagnostics.volume < 3
+                ? "warn"
+                : "pass",
+          metric: `${voiceDiagnostics.volume}/5`,
+          details:
+            voiceDiagnostics.volume === 0
+              ? "The speaker is muted, so spoken replies will seem broken."
+              : voiceDiagnostics.volume < 3
+                ? "Voice testing is easier at volume 4 or 5."
+                : "Volume is high enough to hear spoken replies clearly."
+        },
+        {
+          id: crypto.randomUUID(),
+          label: "Voice pipeline",
+          category: "audio" as const,
+          status: voiceCheckStatus,
+          metric: voiceDiagnostics.lastIntent ?? "No recent intent",
+          details: voiceDiagnostics.summary
+        },
+        {
+          id: crypto.randomUUID(),
           label: "Local logs",
           category: "storage" as const,
           status: getLogs().length > 0 ? "pass" : "warn",
@@ -1101,7 +1712,9 @@ export const createHybridRobotController = (options: {
           !lastIntegration.wirePodReachable
             ? "Vector brain offline."
             : robot.isConnected
-              ? "Diagnostics passed with the current live robot connection."
+              ? voiceDiagnostics.status === "healthy"
+                ? "Diagnostics passed with the current live robot connection."
+                : "Core controls are live, but voice commands still need attention."
               : "WirePod is up, but the robot is still offline.",
         robotName: robot.nickname ?? robot.name,
         checks,

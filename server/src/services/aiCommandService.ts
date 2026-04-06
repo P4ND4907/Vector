@@ -1,8 +1,11 @@
 import type {
   ParsedAiAction,
   ParsedAiCommand,
-  RobotController
+  RobotController,
+  RobotStatus
 } from "../robot/types.js";
+import { fetchWeatherSummary } from "./weatherService.js";
+import { matchVectorCommand } from "./vectorCommandRegistry.js";
 
 const normalize = (value: string) => value.trim().toLowerCase();
 
@@ -28,7 +31,64 @@ const splitPrompt = (prompt: string) =>
 const defaultDriveDurationMs = (direction: string) =>
   direction === "left" || direction === "right" ? 750 : 1200;
 
-const parseSegment = (segment: string): ParsedAiAction | null => {
+const HELP_RESPONSE =
+  "Try hello, what time is it, what's the weather, take a picture, roll a die, drive forward, go dock, run diagnostics, or my name is followed by your name.";
+
+let activeTimer:
+  | {
+      createdAt: number;
+      durationMs: number;
+      endsAt: number;
+      label: string;
+    }
+  | null = null;
+
+const readStringParam = (action: ParsedAiAction, key: string) => {
+  const value = action.params[key];
+  return typeof value === "string" ? value.trim() : "";
+};
+
+const readOptionalStringParam = (action: ParsedAiAction, key: string) => {
+  const value = readStringParam(action, key);
+  return value || undefined;
+};
+
+const readNumberParam = (action: ParsedAiAction, key: string) => {
+  const value = action.params[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+};
+
+const formatDuration = (durationMs: number) => {
+  const totalSeconds = Math.max(1, Math.round(durationMs / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts: string[] = [];
+
+  if (hours) {
+    parts.push(`${hours} hour${hours === 1 ? "" : "s"}`);
+  }
+
+  if (minutes) {
+    parts.push(`${minutes} minute${minutes === 1 ? "" : "s"}`);
+  }
+
+  if (seconds && !hours) {
+    parts.push(`${seconds} second${seconds === 1 ? "" : "s"}`);
+  }
+
+  return parts.join(" ");
+};
+
+const formatRemainingTimer = (remainingMs: number) => {
+  if (remainingMs <= 0) {
+    return "The timer has already finished.";
+  }
+
+  return `${formatDuration(remainingMs)} remaining.`;
+};
+
+const parseBuiltInSegment = (segment: string): ParsedAiAction | null => {
   const normalized = normalize(segment);
 
   const speakMatch = normalized.match(/^(say|speak)\s+(.+)/i);
@@ -44,7 +104,7 @@ const parseSegment = (segment: string): ParsedAiAction | null => {
     const durationMs = moveMatch[3]
       ? Math.round(Number(moveMatch[3]) * 1000)
       : defaultDriveDurationMs(direction);
-    return buildAction(`drive`, `Drive ${direction}`, {
+    return buildAction("drive", `Drive ${direction}`, {
       direction,
       speed: 60,
       durationMs
@@ -101,7 +161,11 @@ const parseSegment = (segment: string): ParsedAiAction | null => {
     return buildAction("stop", "Stop movement", { direction: "stop", speed: 0 });
   }
 
-  if (/(go\s+)?dock|return to (the )?dock|go home/i.test(normalized)) {
+  if (
+    /^(?:go\s+)?dock$|^return(?:\s+to)?\s+(?:the\s+)?dock$|^(?:go|return|head)\s+(?:to\s+)?(?:your\s+)?charger$|^(?:go|return|head)\s+home$|^back\s+to\s+(?:the\s+)?(?:dock|charger)$/.test(
+      normalized
+    )
+  ) {
     return buildAction("dock", "Return to dock", {});
   }
 
@@ -132,6 +196,295 @@ const parseSegment = (segment: string): ParsedAiAction | null => {
   }
 
   return null;
+};
+
+const parseSegment = (segment: string): ParsedAiAction | null =>
+  parseBuiltInSegment(segment) ?? matchVectorCommand(segment);
+
+const speakOnly = async (controller: RobotController, text: string) => {
+  const log = await controller.speak({ text });
+  return log.resultMessage;
+};
+
+const runAssistantAction = async (
+  controller: RobotController,
+  action: ParsedAiAction,
+  prompt: string
+) => {
+  const kind = readStringParam(action, "kind") || "placeholder";
+  const commandKey = readOptionalStringParam(action, "commandKey") || kind;
+  const commandCategory = readOptionalStringParam(action, "commandCategory");
+  const spokenResponse = readOptionalStringParam(action, "spokenResponse");
+
+  switch (kind) {
+    case "set-user-name": {
+      const name = readStringParam(action, "name");
+      if (!name) {
+        return "I still need the name to save.";
+      }
+      await controller.updateSettings({ userName: name });
+      return speakOnly(controller, `Got it. I'll remember that your name is ${name}.`);
+    }
+
+    case "get-user-name": {
+      const settings = await controller.getSettings();
+      return speakOnly(
+        controller,
+        settings.userName
+          ? `Your name is ${settings.userName}.`
+          : "I do not know your name yet. Say my name is and then your name."
+      );
+    }
+
+    case "weather":
+    case "weather-tomorrow": {
+      const settings = await controller.getSettings();
+      const requestedLocation = readOptionalStringParam(action, "location");
+      const location = requestedLocation || settings.weatherLocation || "Anchorage, Alaska";
+      if (location !== settings.weatherLocation) {
+        await controller.updateSettings({ weatherLocation: location });
+      }
+
+      const summary = await fetchWeatherSummary(location, kind === "weather-tomorrow" ? 1 : 0);
+      if (kind === "weather" && !requestedLocation) {
+        try {
+          await controller.animation({ animationId: "weather-report" });
+          await sleep(500);
+        } catch {
+          // If the stock weather routine is unavailable, still speak the custom forecast summary.
+        }
+      }
+
+      return speakOnly(controller, summary);
+    }
+
+    case "stock-intent": {
+      const intent = readStringParam(action, "intent");
+
+      if (!intent) {
+        return spokenResponse || "That stock Vector action is missing its intent mapping.";
+      }
+
+      try {
+        const log = await controller.animation({ animationId: intent });
+        return spokenResponse || log.resultMessage;
+      } catch (error) {
+        if (spokenResponse) {
+          return speakOnly(controller, spokenResponse);
+        }
+
+        throw error;
+      }
+    }
+
+    case "set-timer": {
+      const durationMs = readNumberParam(action, "durationMs");
+      const durationLabel = readOptionalStringParam(action, "durationLabel");
+
+      if (!durationMs) {
+        return speakOnly(controller, "I need a timer length like 5 minutes or 30 seconds.");
+      }
+
+      activeTimer = {
+        createdAt: Date.now(),
+        durationMs,
+        endsAt: Date.now() + durationMs,
+        label: durationLabel || formatDuration(durationMs)
+      };
+
+      return speakOnly(controller, `Timer set for ${activeTimer.label}.`);
+    }
+
+    case "check-timer": {
+      if (!activeTimer) {
+        return speakOnly(controller, "There is no active timer right now.");
+      }
+
+      const remainingMs = activeTimer.endsAt - Date.now();
+      if (remainingMs <= 0) {
+        activeTimer = null;
+        return speakOnly(controller, "The timer has already finished.");
+      }
+
+      return speakOnly(controller, `Timer status. ${formatRemainingTimer(remainingMs)}`);
+    }
+
+    case "cancel-timer": {
+      if (!activeTimer) {
+        return speakOnly(controller, "There is no active timer to cancel.");
+      }
+
+      activeTimer = null;
+      return speakOnly(controller, "Timer cancelled.");
+    }
+
+    case "time-lookup": {
+      const now = new Date().toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit"
+      });
+      return speakOnly(controller, `It is ${now}.`);
+    }
+
+    case "battery-status": {
+      const status = await controller.getStatus();
+      const chargingText = status.isCharging
+        ? "and charging"
+        : status.isDocked
+          ? "and resting on the charger"
+          : "and off the charger";
+      return speakOnly(
+        controller,
+        `${status.nickname ?? status.name} is at ${status.batteryPercent} percent battery ${chargingText}.`
+      );
+    }
+
+    case "connect": {
+      const status = await controller.connect();
+      return speakOnly(
+        controller,
+        status.isConnected
+          ? `${status.nickname ?? status.name} is connected and ready.`
+          : "I could not bring Vector online yet."
+      );
+    }
+
+    case "disconnect": {
+      const status = await controller.disconnect();
+      return `${status.nickname ?? status.name} disconnected safely.`;
+    }
+
+    case "diagnostics": {
+      const report = await controller.runDiagnostics();
+      return speakOnly(controller, report.summary);
+    }
+
+    case "set-robot-name": {
+      const name = readStringParam(action, "name");
+      if (!name) {
+        return "I still need the new robot name.";
+      }
+
+      await controller.connect({ nickname: name, name });
+      return speakOnly(controller, `Okay. I will call this robot ${name}.`);
+    }
+
+    case "get-robot-name": {
+      const status = await controller.getStatus();
+      return speakOnly(controller, `My name is ${status.nickname ?? status.name}.`);
+    }
+
+    case "switch-language": {
+      const language = readStringParam(action, "language");
+      if (!language) {
+        return "I still need the language name.";
+      }
+
+      await controller.updateSettings({ preferredLanguage: language });
+      return speakOnly(
+        controller,
+        `Okay. I will remember ${language} as the preferred language for app commands.`
+      );
+    }
+
+    case "translate-phrase": {
+      const phrase = readStringParam(action, "phrase");
+      const language = readOptionalStringParam(action, "language");
+      await controller.recordCommandGap({
+        source: "ai",
+        prompt,
+        category: "missing-integration",
+        note: "Translation command matched the shared registry, but live translation is not wired yet.",
+        matchedIntent: commandKey,
+        suggestedArea: "translation"
+      });
+      return speakOnly(
+        controller,
+        language
+          ? `I heard the translation request for ${phrase} in ${language}. Live translation is not wired yet.`
+          : `I heard the translation request for ${phrase}. Live translation is not wired yet.`
+      );
+    }
+
+    case "roll-die": {
+      const roll = 1 + Math.floor(Math.random() * 6);
+      return speakOnly(controller, `I rolled a ${roll}.`);
+    }
+
+    case "chat-with-user": {
+      const target = readStringParam(action, "target");
+      if (!target) {
+        return "I still need the chat target.";
+      }
+
+      await controller.updateSettings({ chatTarget: target });
+      return speakOnly(controller, `Okay. I will use ${target} as the current chat target.`);
+    }
+
+    case "get-chat-target": {
+      const settings = await controller.getSettings();
+      return speakOnly(
+        controller,
+        settings.chatTarget
+          ? `Right now I am chatting with ${settings.chatTarget}.`
+          : "No chat target is saved yet."
+      );
+    }
+
+    case "send-chat-message": {
+      const settings = await controller.getSettings();
+      const target = readOptionalStringParam(action, "target") || settings.chatTarget;
+      const message = readStringParam(action, "message");
+
+      if (!target) {
+        return speakOnly(controller, "I need a chat target first. Say chat with and then a name.");
+      }
+
+      return speakOnly(controller, `Message for ${target}. ${message}`);
+    }
+
+    case "volume-down": {
+      const status = await controller.getStatus();
+      const nextVolume = Math.max(0, (status.volume ?? 3) - 1);
+      const log = await controller.setVolume({ volume: nextVolume });
+      return log.resultMessage;
+    }
+
+    case "mute-audio": {
+      const log = await controller.toggleMute({ isMuted: true });
+      return log.resultMessage;
+    }
+
+    case "stop-exploring": {
+      const automation = await controller.getAutomationControl();
+      if (automation.status === "idle") {
+        return speakOnly(controller, "Exploration is already idle.");
+      }
+
+      const session = await controller.stopRoam();
+      return speakOnly(controller, session.summary);
+    }
+
+    case "show-help": {
+      return speakOnly(controller, spokenResponse || HELP_RESPONSE);
+    }
+
+    default: {
+      await controller.recordCommandGap({
+        source: "ai",
+        prompt,
+        category: "missing-integration",
+        note: `${action.label} matched the shared registry, but it still uses a placeholder response.`,
+        matchedIntent: commandKey,
+        suggestedArea: commandCategory
+      });
+
+      return speakOnly(
+        controller,
+        spokenResponse || "That command is recognized, but the live action is still being wired up."
+      );
+    }
+  }
 };
 
 export const previewAiCommand = async (prompt: string): Promise<ParsedAiCommand> => {
@@ -166,7 +519,11 @@ export const executeAiCommand = async (
   for (const action of parsed.actions) {
     if (action.type === "speak") {
       const text = String(action.params.text ?? "");
-      if (latestStatus.isDocked || latestStatus.mood === "sleepy") {
+      if (
+        !latestStatus.isConnected ||
+        latestStatus.mood === "sleepy" ||
+        latestStatus.connectionState !== "connected"
+      ) {
         try {
           await controller.wake();
         } catch {}
@@ -250,6 +607,19 @@ export const executeAiCommand = async (
         `${status.nickname ?? status.name} is ${status.isConnected ? "online" : "offline"} with ${status.batteryPercent}% battery.`
       );
       latestStatus = status;
+      continue;
+    }
+
+    if (action.type === "assistant") {
+      results.push(await runAssistantAction(controller, action, parsed.prompt));
+      latestStatus = await controller.getStatus();
+      continue;
+    }
+
+    if (action.type === "photo") {
+      const sync = await controller.capturePhoto();
+      results.push(sync.note);
+      latestStatus = await controller.getStatus();
     }
   }
 

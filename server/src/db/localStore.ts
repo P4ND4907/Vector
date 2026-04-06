@@ -1,9 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type {
+  AiMemoryRecord,
   AutomationControlRecord,
   CameraSnapshotRecord,
+  CommandGapRecord,
   CommandLogRecord,
+  SupportReportRecord,
   RobotStatus,
   RoamSessionRecord,
   RoutineRecord,
@@ -17,12 +20,15 @@ interface PersistedRobotProfile {
 }
 
 export interface PersistedState {
+  aiMemory: AiMemoryRecord[];
   automationControl: AutomationControlRecord;
+  commandGaps: CommandGapRecord[];
   logs: CommandLogRecord[];
   robotProfile: PersistedRobotProfile;
   roamSessions: RoamSessionRecord[];
   routines: RoutineRecord[];
   snapshots: CameraSnapshotRecord[];
+  supportReports: SupportReportRecord[];
   settings: RuntimeSettings;
 }
 
@@ -36,10 +42,12 @@ const defaultSettings = (): RuntimeSettings => ({
   reconnectOnStartup: true,
   pollingIntervalMs: 6000,
   liveUpdateMode: "polling",
-  serial: ""
+  serial: "",
+  weatherLocation: "Anchorage, Alaska"
 });
 
 const defaultState = (): PersistedState => ({
+  aiMemory: [],
   automationControl: {
     status: "idle",
     behavior: "patrol",
@@ -49,11 +57,13 @@ const defaultState = (): PersistedState => ({
     dataCollectionEnabled: true,
     autoDockThreshold: 24
   },
+  commandGaps: [],
   settings: defaultSettings(),
   routines: [],
   logs: [],
   roamSessions: [],
   snapshots: [],
+  supportReports: [],
   robotProfile: {
     aliases: {},
     selectedSerial: "",
@@ -81,10 +91,12 @@ export const createLocalStore = (filePath: string) => {
       return {
         ...defaultState(),
         ...raw,
+        aiMemory: Array.isArray(raw.aiMemory) ? raw.aiMemory.slice(0, 100) : [],
         automationControl: {
           ...defaultState().automationControl,
           ...(raw.automationControl ?? {})
         },
+        commandGaps: Array.isArray(raw.commandGaps) ? raw.commandGaps.slice(0, 120) : [],
         settings: {
           ...defaultSettings(),
           ...(raw.settings ?? {})
@@ -93,6 +105,7 @@ export const createLocalStore = (filePath: string) => {
         logs: Array.isArray(raw.logs) ? raw.logs.slice(0, 200) : [],
         roamSessions: Array.isArray(raw.roamSessions) ? raw.roamSessions.slice(0, 24) : [],
         snapshots: Array.isArray(raw.snapshots) ? raw.snapshots.slice(0, 24) : [],
+        supportReports: Array.isArray(raw.supportReports) ? raw.supportReports.slice(0, 40) : [],
         robotProfile: {
           ...defaultState().robotProfile,
           ...(raw.robotProfile ?? {})
@@ -162,6 +175,15 @@ export const createLocalStore = (filePath: string) => {
         writeState(nextState);
         return nextState;
       })(),
+    saveAiMemory: (aiMemory: AiMemoryRecord[]) =>
+      state = (() => {
+        const nextState = {
+          ...state,
+          aiMemory: aiMemory.slice(0, 100)
+        };
+        writeState(nextState);
+        return nextState;
+      })(),
     appendLog: (log: CommandLogRecord) =>
       state = (() => {
         const nextState = {
@@ -194,6 +216,24 @@ export const createLocalStore = (filePath: string) => {
         const nextState = {
           ...state,
           snapshots: snapshots.slice(0, 24)
+        };
+        writeState(nextState);
+        return nextState;
+      })(),
+    saveSupportReports: (supportReports: SupportReportRecord[]) =>
+      state = (() => {
+        const nextState = {
+          ...state,
+          supportReports: supportReports.slice(0, 40)
+        };
+        writeState(nextState);
+        return nextState;
+      })(),
+    saveCommandGaps: (commandGaps: CommandGapRecord[]) =>
+      state = (() => {
+        const nextState = {
+          ...state,
+          commandGaps: commandGaps.slice(0, 120)
         };
         writeState(nextState);
         return nextState;

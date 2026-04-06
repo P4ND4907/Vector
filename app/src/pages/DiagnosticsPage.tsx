@@ -5,6 +5,7 @@ import {
   Bot,
   CheckCircle2,
   ChevronRight,
+  Mic,
   PlugZap,
   RefreshCw,
   ShieldCheck
@@ -34,17 +35,29 @@ const checkTone: Record<DiagnosticCheckStatus, string> = {
   fail: "border-red-400/30 bg-red-400/10 text-red-100"
 };
 
+const repairStepTone: Record<"success" | "warn" | "fail", string> = {
+  success: checkTone.pass,
+  warn: checkTone.warn,
+  fail: checkTone.fail
+};
+
 export function DiagnosticsPage() {
   const robot = useAppStore((state) => state.robot);
   const integration = useAppStore((state) => state.integration);
   const logs = useAppStore((state) => state.logs);
   const diagnosticReports = useAppStore((state) => state.diagnosticReports);
+  const supportReports = useAppStore((state) => state.supportReports);
   const diagnosticsState = useAppStore((state) => state.actionStates.diagnostics);
+  const voiceState = useAppStore((state) => state.actionStates.voice);
+  const supportState = useAppStore((state) => state.actionStates.support);
   const connectRobot = useAppStore((state) => state.connectRobot);
   const runDiagnostics = useAppStore((state) => state.runDiagnostics);
+  const quickRepair = useAppStore((state) => state.quickRepair);
+  const repairVoiceSetup = useAppStore((state) => state.repairVoiceSetup);
   const wakeRobot = useAppStore((state) => state.wakeRobot);
 
   const latestReport = diagnosticReports[0];
+  const latestSupportReport = supportReports[0];
   const latestSuccessfulCommand = useMemo(() => logs.find((log) => log.status === "success"), [logs]);
   const latestFailedCommand = useMemo(() => logs.find((log) => log.status === "error"), [logs]);
   const batteryState = getBatteryState(robot);
@@ -70,6 +83,22 @@ export function DiagnosticsPage() {
     latestReport?.troubleshooting?.forEach((item) => items.add(item));
     return Array.from(items);
   }, [integration, latestReport]);
+
+  const voiceChecks = useMemo(
+    () =>
+      latestReport?.checks.filter(
+        (check) =>
+          check.label === "Wake word" ||
+          check.label === "Speech locale" ||
+          check.label === "Speaker volume" ||
+          check.label === "Voice pipeline"
+      ) ?? [],
+    [latestReport]
+  );
+  const wakeWordCheck = voiceChecks.find((check) => check.label === "Wake word");
+  const localeCheck = voiceChecks.find((check) => check.label === "Speech locale");
+  const volumeCheck = voiceChecks.find((check) => check.label === "Speaker volume");
+  const pipelineCheck = voiceChecks.find((check) => check.label === "Voice pipeline");
 
   const recoverySteps = useMemo(() => {
     if (!integration.wirePodReachable) {
@@ -164,6 +193,10 @@ export function DiagnosticsPage() {
                 <Activity className="h-4 w-4" />
                 {diagnosticsState.status === "loading" ? "Running diagnostics..." : "Run diagnostics"}
               </Button>
+              <Button variant="outline" onClick={quickRepair} disabled={supportState.status === "loading"}>
+                <ShieldCheck className="h-4 w-4" />
+                {supportState.status === "loading" ? "Trying quick repair..." : "Quick repair"}
+              </Button>
               <Button variant="outline" onClick={connectRobot}>
                 <RefreshCw className="h-4 w-4" />
                 Retry connection
@@ -174,7 +207,10 @@ export function DiagnosticsPage() {
             </div>
 
             <p className="text-sm text-muted-foreground">
-              {diagnosticsState.message || integration.note || "Diagnostics results and command history stay stored locally."}
+              {supportState.message ||
+                diagnosticsState.message ||
+                integration.note ||
+                "Diagnostics results and command history stay stored locally."}
             </p>
 
             <details className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
@@ -220,6 +256,64 @@ export function DiagnosticsPage() {
                 </div>
               </div>
             </details>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Voice and wake word</CardTitle>
+            <CardDescription>
+              Keep Hey Vector reliable without opening the WirePod UI.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <Mic className="h-4 w-4 text-primary" />
+                {pipelineCheck?.details || "Run diagnostics to inspect the current Hey Vector path."}
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                The refresh action re-applies the voice defaults WirePod exposes: Hey Vector button mode, English (US), and a safe speaker volume.
+              </p>
+            </div>
+
+            {voiceChecks.length ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[wakeWordCheck, localeCheck, volumeCheck, pipelineCheck]
+                  .filter((check): check is NonNullable<typeof check> => Boolean(check))
+                  .map((check) => (
+                    <div key={check.id} className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-semibold">{check.label}</div>
+                        <Badge className={checkTone[check.status]}>{check.status}</Badge>
+                      </div>
+                      <div className="mt-2 text-lg font-semibold">{check.metric}</div>
+                      <p className="mt-2 text-sm text-muted-foreground">{check.details}</p>
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <div className="rounded-3xl border border-dashed border-white/10 p-6 text-sm text-muted-foreground">
+                Run diagnostics once to capture the current wake word, locale, speaker volume, and latest voice result.
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={repairVoiceSetup} disabled={voiceState.status === "loading"}>
+                <Mic className="h-4 w-4" />
+                {voiceState.status === "loading" ? "Refreshing voice defaults..." : "Refresh voice defaults"}
+              </Button>
+              <Button variant="outline" onClick={runDiagnostics}>
+                <Activity className="h-4 w-4" />
+                Run diagnostics again
+              </Button>
+            </div>
+
+            <p className="text-sm text-muted-foreground">
+              {voiceState.message ||
+                pipelineCheck?.details ||
+                "After repair, test with a full phrase like 'Hey Vector, what time is it?'."}
+            </p>
           </CardContent>
         </Card>
 
@@ -313,6 +407,51 @@ export function DiagnosticsPage() {
             ) : (
               <div className="rounded-3xl border border-dashed border-white/10 p-6 text-sm text-muted-foreground">
                 No diagnostic report yet. Run one once the backend is up.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Latest quick repair</CardTitle>
+            <CardDescription>The app keeps the last self-heal attempt readable in plain English.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {latestSupportReport ? (
+              <>
+                <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">{latestSupportReport.summary}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{formatTimestamp(latestSupportReport.createdAt)}</div>
+                    </div>
+                    <Badge className={overallTone[
+                      latestSupportReport.repairResult.overallStatus === "repaired"
+                        ? "healthy"
+                        : latestSupportReport.repairResult.overallStatus === "partial"
+                          ? "attention"
+                          : "critical"
+                    ]}>
+                      {latestSupportReport.repairResult.overallStatus}
+                    </Badge>
+                  </div>
+                  <p className="mt-3 text-sm text-muted-foreground">{latestSupportReport.repairResult.summary}</p>
+                </div>
+
+                {latestSupportReport.repairResult.steps.map((step) => (
+                  <div key={step.id} className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-semibold">{step.label}</div>
+                      <Badge className={repairStepTone[step.status]}>{step.status}</Badge>
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">{step.details}</p>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <div className="rounded-3xl border border-dashed border-white/10 p-6 text-sm text-muted-foreground">
+                No quick repair has been saved yet. Run one if Vector feels stuck before reporting the issue.
               </div>
             )}
           </CardContent>
