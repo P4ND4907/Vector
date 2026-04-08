@@ -18,6 +18,7 @@ import type {
 } from "@/types";
 import { animationCatalog } from "@/lib/animation-catalog";
 import { buildFeatureFlags, buildOptionalFeatureList } from "@/lib/optional-features";
+import { sanitizeRobotSerial } from "@/lib/robot-serial";
 
 const buildSnapshotDataUrl = (label: string, accent: string) => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360">
@@ -417,6 +418,7 @@ export const initialSnapshot: AppSnapshot = {
     theme: "dark",
     colorTheme: "vector",
     appBackendUrl: "",
+    planAccess: "free",
     advancedMode: false,
     autoReconnect: true,
     startupBehavior: "connect",
@@ -441,3 +443,71 @@ export const initialSnapshot: AppSnapshot = {
 
 export const cloneSnapshot = () => JSON.parse(JSON.stringify(initialSnapshot)) as AppSnapshot;
 export const buildCameraFrame = buildSnapshotDataUrl;
+
+export const createBaseSnapshot = (): AppSnapshot => {
+  const snapshot = cloneSnapshot();
+  const createdAt = new Date().toISOString();
+
+  return {
+    ...snapshot,
+    robot: {
+      ...snapshot.robot,
+      id: "vector-offline",
+      serial: undefined,
+      name: "Vector",
+      nickname: undefined,
+      ipAddress: "Unavailable",
+      token: "wirepod-managed",
+      lastSeen: createdAt,
+      batteryPercent: 0,
+      isCharging: false,
+      isConnected: false,
+      isDocked: false,
+      firmwareVersion: "WirePod unavailable",
+      connectionState: "error",
+      mood: "sleepy",
+      wifiStrength: 0,
+      cameraAvailable: false,
+      connectionSource: "wirepod",
+      systemStatus: "offline",
+      currentActivity: "Waiting for connection."
+    },
+    integration: {
+      ...snapshot.integration,
+      source: "wirepod",
+      selectedSerial: undefined,
+      note: "Local bridge offline",
+      robotReachable: false,
+      mockMode: false,
+      lastCheckedAt: createdAt,
+      probes: [],
+      managedBridge: {
+        ...snapshot.integration.managedBridge,
+        source: "none",
+        available: false,
+        running: false,
+        note: "Bundled bridge not confirmed yet."
+      }
+    },
+    savedProfiles: [],
+    routines: [],
+    logs: [],
+    notifications: [],
+    snapshots: [],
+    visionEvents: [],
+    diagnosticReports: [],
+    roamSessions: [],
+    availableRobots: [],
+    supportReports: [],
+    queuedAnimations: [],
+    settings: {
+      ...snapshot.settings,
+      mockMode: false,
+      robotNickname: "",
+      customWirePodEndpoint: "",
+      savedWirePodEndpoint: "",
+      robotSerial: sanitizeRobotSerial(snapshot.settings.robotSerial) ?? ""
+    },
+    aiCommandHistory: []
+  };
+};

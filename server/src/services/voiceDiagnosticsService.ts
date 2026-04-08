@@ -99,11 +99,11 @@ export const buildVoiceDiagnostics = ({
 
   if (!integration.wirePodReachable) {
     status = "critical";
-    summary = "WirePod is offline, so wake-word voice control cannot work.";
-    troubleshooting.add("Make sure WirePod is still running on this computer.");
+    summary = "The local bridge is offline, so wake-word voice control cannot work.";
+    troubleshooting.add("Make sure the desktop service is still running on this computer.");
   } else if (!robot.isConnected) {
     status = "attention";
-    summary = "WirePod is online, but Vector is not answering live checks right now.";
+    summary = "The local bridge is online, but Vector is not answering live checks right now.";
     troubleshooting.add("Place Vector on the charger, wait a moment, and test again.");
   } else if (wakeWordMode !== "hey-vector") {
     status = "attention";
@@ -119,7 +119,7 @@ export const buildVoiceDiagnostics = ({
     troubleshooting.add("Raise the volume before testing spoken responses.");
   } else if (lastIntent?.value === "intent_system_noaudio") {
     status = "attention";
-    summary = "Vector woke, but WirePod did not capture usable follow-up speech.";
+    summary = "Vector woke, but the local bridge did not capture usable follow-up speech.";
     troubleshooting.add("Try a full phrase like 'Hey Vector, what time is it?' instead of only the wake word.");
     troubleshooting.add("Test from closer range in a quieter room.");
   } else if (lastIntent?.value === "intent_system_unmatched") {
@@ -131,7 +131,7 @@ export const buildVoiceDiagnostics = ({
   } else if (!lastIntent && !lastTranscription?.text) {
     status = "attention";
     summary = "No recent voice activity has been recorded yet.";
-    troubleshooting.add("Say a full command after the wake word so WirePod has real speech to inspect.");
+    troubleshooting.add("Say a full command after the wake word so the local bridge has real speech to inspect.");
   }
 
   if (volume > 0 && volume < 3) {

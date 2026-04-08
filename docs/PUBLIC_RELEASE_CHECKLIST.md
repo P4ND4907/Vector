@@ -1,6 +1,6 @@
 # Public Release Checklist
 
-Use this checklist before changing the GitHub repository from private to public.
+Use this checklist before publishing or refreshing the stable public Phase 1 Windows release.
 
 ## Safety
 
@@ -32,7 +32,9 @@ Use this checklist before changing the GitHub repository from private to public.
 
 ## Release Files
 
-- If you want non-technical testers, build or upload a Windows release artifact.
+- Confirm the root `package.json` version matches the release you want people to download.
+- Build fresh Windows release artifacts with `npm run release:windows`.
+- If you want non-technical testers, upload the Windows installer to a GitHub Release.
 - Keep source-download instructions in the README for advanced users.
 - Keep the known limitations section honest.
 

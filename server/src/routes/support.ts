@@ -24,6 +24,28 @@ export const createSupportRouter = (controller: RobotController) => {
     });
   }));
 
+  router.get("/bundle", asyncRoute(async (_request: Request, response: Response) => {
+    const [diagnosticsSnapshot, voiceDiagnostics, supportReports, commandGaps, settings, bridgeWatchdog] =
+      await Promise.all([
+        buildDiagnosticsSnapshot(controller),
+        controller.getVoiceDiagnostics(),
+        controller.getSupportReports(),
+        controller.getCommandGaps(),
+        controller.getSettings(),
+        controller.getBridgeWatchdogStatus()
+      ]);
+
+    response.json({
+      generatedAt: new Date().toISOString(),
+      diagnosticsSnapshot,
+      voiceDiagnostics,
+      supportReports,
+      commandGaps,
+      settings,
+      bridgeWatchdog
+    });
+  }));
+
   router.post("/repair", asyncRoute(async (_request: Request, response: Response) => {
     response.json({
       repair: await controller.quickRepair(),

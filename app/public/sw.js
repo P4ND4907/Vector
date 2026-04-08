@@ -1,4 +1,4 @@
-const CACHE_NAME = "vector-control-hub-shell-v3";
+const CACHE_NAME = "vector-control-hub-shell-v4";
 const APP_SHELL_URLS = [
   "/",
   "/index.html",
@@ -11,8 +11,16 @@ const APP_SHELL_URLS = [
   "/pwa-maskable-512.png",
   "/apple-touch-icon.png"
 ];
+const SHOULD_BYPASS_CACHE =
+  self.location.hostname === "localhost" ||
+  self.location.hostname === "127.0.0.1";
 
 self.addEventListener("install", (event) => {
+  if (SHOULD_BYPASS_CACHE) {
+    event.waitUntil(self.skipWaiting());
+    return;
+  }
+
   event.waitUntil(
     caches
       .open(CACHE_NAME)
@@ -22,6 +30,16 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
+  if (SHOULD_BYPASS_CACHE) {
+    event.waitUntil(
+      caches
+        .keys()
+        .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+        .then(() => self.clients.claim())
+    );
+    return;
+  }
+
   event.waitUntil(
     caches
       .keys()
@@ -39,6 +57,10 @@ const isStaticAssetRequest = (request) =>
   request.destination === "font";
 
 self.addEventListener("fetch", (event) => {
+  if (SHOULD_BYPASS_CACHE) {
+    return;
+  }
+
   const { request } = event;
 
   if (request.method !== "GET") {

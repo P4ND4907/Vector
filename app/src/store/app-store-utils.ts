@@ -1,5 +1,12 @@
-import { cloneSnapshot } from "@/services/mockData";
+import { createBaseSnapshot } from "@/services/mockData";
 import { robotService } from "@/services/robotService";
+import {
+  sanitizeAvailableRobotsForMode,
+  sanitizeIntegrationForMode,
+  sanitizeRobotForMode,
+  sanitizeSavedProfilesForMode,
+  sanitizeSettingsForMode
+} from "@/lib/robot-serial";
 import type {
   ActionFeedback,
   AppSnapshot,
@@ -10,7 +17,7 @@ import type {
 
 import type { AppState, AppStoreGet, AppStoreSet, PersistedSlice } from "./app-store-types";
 
-export const baseSnapshot = cloneSnapshot();
+export const baseSnapshot = createBaseSnapshot();
 
 export const actionDefaults = (): Record<string, ActionFeedback> => ({
   bootstrap: { status: "idle" },
@@ -74,6 +81,68 @@ export const createNotification = (
   channel
 });
 
+const exactLegacyCopyMap = new Map<string, string>([
+  ["Vector brain offline", "Local bridge offline"],
+  ["Local brain ready", "Local bridge ready"],
+  ["Diagnostics failed.", "The diagnostics request did not finish."],
+  ["Action failed", "Needs attention"]
+]);
+
+const legacyCopyReplacements: Array<[string, string]> = [
+  ["Vector is not responding through WirePod right now.", "The local bridge is online, but Vector is not responding right now."],
+  ["WirePod compatibility bridge answered the backend.", "The local bridge answered the backend."],
+  ["Connected through local WirePod.", "Connected through the local bridge."],
+  ["local WirePod bridge", "local bridge"],
+  ["Local brain", "Local bridge"],
+  ["local brain", "local bridge"]
+];
+
+const normalizeLegacyCopy = (value?: string) => {
+  if (!value) {
+    return value;
+  }
+
+  let next = exactLegacyCopyMap.get(value) ?? value;
+
+  for (const [before, after] of legacyCopyReplacements) {
+    if (next.includes(before)) {
+      next = next.split(before).join(after);
+    }
+  }
+
+  return next;
+};
+
+const actionFailureTitles: Record<string, string> = {
+  bootstrap: "Startup needs attention",
+  scan: "Scan needs attention",
+  pair: "Setup needs attention",
+  connect: "Connection needs attention",
+  disconnect: "Disconnect needs attention",
+  drive: "Drive command needs attention",
+  speak: "Speech command needs attention",
+  animation: "Animation command needs attention",
+  diagnostics: "Diagnostics need attention",
+  voice: "Voice setup needs attention",
+  support: "Repair needs attention",
+  automation: "Automation needs attention",
+  dock: "Dock command needs attention",
+  wake: "Wake command needs attention",
+  photo: "Photo action needs attention",
+  routine: "Routine update needs attention",
+  settings: "Settings update needs attention"
+};
+
+export class ActionFeedbackError extends Error {
+  readonly title?: string;
+
+  constructor(message: string, title?: string) {
+    super(message);
+    this.name = "ActionFeedbackError";
+    this.title = title;
+  }
+}
+
 export const getActiveRoamSession = (state: Pick<AppState, "roamSessions" | "automationControl">) =>
   state.roamSessions.find((session) => session.id === state.automationControl.activeSessionId);
 
@@ -99,13 +168,17 @@ export const runAction = async (
     }));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected robot error.";
+    const title =
+      error instanceof ActionFeedbackError && error.title
+        ? error.title
+        : actionFailureTitles[key] || "Needs attention";
     set((state) => ({
       actionStates: {
         ...state.actionStates,
         [key]: { status: "error", message, updatedAt: new Date().toISOString() }
       },
       logs: [appendLog(key, {}, "error", message), ...state.logs].slice(0, 60),
-      toasts: [appendToast("Action failed", message, "warning"), ...state.toasts].slice(0, 5)
+      toasts: [appendToast(title, message, "warning"), ...state.toasts].slice(0, 5)
     }));
   }
 };
@@ -142,7 +215,7 @@ export const mergePersistedState = (
       )
     : currentState.queuedAnimations.filter((item) => animationIds.has(item));
 
-  return {
+  const mergedState: AppState = {
     ...currentState,
     ...persistedState,
     robot: {
@@ -197,6 +270,96 @@ export const mergePersistedState = (
     availableRobots: Array.isArray(persistedState.availableRobots)
       ? persistedState.availableRobots
       : currentState.availableRobots
+  };
+
+  const normalizedState: AppState = {
+    ...mergedState,
+    robot: {
+      ...mergedState.robot,
+      currentActivity: normalizeLegacyCopy(mergedState.robot.currentActivity) ?? mergedState.robot.currentActivity
+    },
+    integration: {
+      ...mergedState.integration,
+      note: normalizeLegacyCopy(mergedState.integration.note),
+      bridgeLabel: normalizeLegacyCopy(mergedState.integration.bridgeLabel) ?? mergedState.integration.bridgeLabel
+    },
+    logs: mergedState.logs.map((item) => ({
+      ...item,
+      resultMessage: normalizeLegacyCopy(item.resultMessage) ?? item.resultMessage
+    })),
+    notifications: mergedState.notifications.map((item) => ({
+      ...item,
+      title: normalizeLegacyCopy(item.title) ?? item.title,
+      description: normalizeLegacyCopy(item.description) ?? item.description
+    })),
+    diagnosticReports: mergedState.diagnosticReports.map((report) => ({
+      ...report,
+      summary: normalizeLegacyCopy(report.summary) ?? report.summary,
+      troubleshooting: report.troubleshooting.map((entry) => normalizeLegacyCopy(entry) ?? entry)
+    })),
+    supportReports: mergedState.supportReports.map((report) => ({
+      ...report,
+      summary: normalizeLegacyCopy(report.summary) ?? report.summary,
+      details: normalizeLegacyCopy(report.details) ?? report.details,
+      integrationNote: normalizeLegacyCopy(report.integrationNote)
+    }))
+  };
+
+  return sanitizeSnapshotState(normalizedState);
+};
+
+const sanitizeSnapshotState = <T extends Pick<AppState, "robot" | "integration" | "settings" | "savedProfiles" | "availableRobots">>(
+  state: T
+): T => {
+  const allowPlaceholder = state.settings.mockMode;
+  const shouldResetMockConnection =
+    !allowPlaceholder &&
+    (
+      state.integration.mockMode ||
+      state.integration.source === "mock" ||
+      state.robot.connectionSource === "mock"
+    );
+
+  const settings = sanitizeSettingsForMode(state.settings);
+  const savedProfiles = sanitizeSavedProfilesForMode(state.savedProfiles, allowPlaceholder);
+  const availableRobots = sanitizeAvailableRobotsForMode(state.availableRobots, allowPlaceholder);
+  const integration = sanitizeIntegrationForMode(
+    {
+      ...state.integration,
+      source: allowPlaceholder ? "mock" : shouldResetMockConnection ? "wirepod" : state.integration.source,
+      mockMode: state.settings.mockMode,
+      robotReachable: shouldResetMockConnection ? false : state.integration.robotReachable
+    },
+    allowPlaceholder
+  );
+  const robot = sanitizeRobotForMode(
+    allowPlaceholder
+      ? state.robot
+      : shouldResetMockConnection
+        ? {
+          ...state.robot,
+          connectionSource: "wirepod",
+          isConnected: false,
+          connectionState: "error",
+          systemStatus:
+            state.robot.isCharging
+              ? "charging"
+              : state.robot.isDocked
+                ? "docked"
+                : "offline",
+          currentActivity: "Waiting for connection."
+        }
+        : state.robot,
+    allowPlaceholder
+  );
+
+  return {
+    ...state,
+    robot,
+    integration,
+    settings,
+    savedProfiles,
+    availableRobots
   };
 };
 
@@ -337,33 +500,37 @@ export const attachRoamSimulation = (get: AppStoreGet, set: AppStoreSet) => {
   );
 };
 
-export const partializeState = (state: AppState): PersistedSlice => ({
-  robot: state.robot,
-  integration: state.integration,
-  savedProfiles: state.savedProfiles,
-  routines: state.routines,
-  logs: state.logs,
-  notifications: state.notifications,
-  diagnosticReports: state.diagnosticReports,
-  supportReports: state.supportReports,
-  roamSessions: state.roamSessions,
-  automationControl: state.automationControl,
-  queuedAnimations: state.queuedAnimations,
-  driveState: state.driveState,
-  settings: state.settings,
-  aiCommandHistory: state.aiCommandHistory,
-  animations: state.animations,
-  savedPhrases: state.savedPhrases,
-  snapshots: state.snapshots,
-  visionEvents: state.visionEvents,
-  availableRobots: state.availableRobots
-});
+export const partializeState = (state: AppState): PersistedSlice => {
+  const sanitizedState = sanitizeSnapshotState(state);
+
+  return {
+    robot: sanitizedState.robot,
+    integration: sanitizedState.integration,
+    savedProfiles: sanitizedState.savedProfiles,
+    routines: state.routines,
+    logs: state.logs,
+    notifications: state.notifications,
+    diagnosticReports: state.diagnosticReports,
+    supportReports: state.supportReports,
+    roamSessions: state.roamSessions,
+    automationControl: state.automationControl,
+    queuedAnimations: state.queuedAnimations,
+    driveState: state.driveState,
+    settings: sanitizedState.settings,
+    aiCommandHistory: state.aiCommandHistory,
+    animations: state.animations,
+    savedPhrases: state.savedPhrases,
+    snapshots: state.snapshots,
+    visionEvents: state.visionEvents,
+    availableRobots: sanitizedState.availableRobots
+  };
+};
 
 export const exportSnapshot = (state: AppSnapshot) =>
   JSON.stringify(
     {
-      robot: state.robot,
-      savedProfiles: state.savedProfiles,
+      robot: sanitizeRobotForMode(state.robot, state.settings.mockMode),
+      savedProfiles: sanitizeSavedProfilesForMode(state.savedProfiles, state.settings.mockMode),
       routines: state.routines,
       logs: state.logs,
       notifications: state.notifications,
@@ -374,7 +541,7 @@ export const exportSnapshot = (state: AppSnapshot) =>
       snapshots: state.snapshots,
       visionEvents: state.visionEvents,
       queuedAnimations: state.queuedAnimations,
-      settings: state.settings
+      settings: sanitizeSettingsForMode(state.settings)
     },
     null,
     2

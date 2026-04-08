@@ -42,6 +42,49 @@ export interface StartupGuide {
 const hasSavedTarget = (settings: AppSettings, integration: IntegrationStatus, savedProfile?: RobotProfile) =>
   Boolean(savedProfile || settings.robotSerial || integration.selectedSerial);
 
+export const shouldPreferGuidedNewRobotSetup = ({
+  robot,
+  integration,
+  settings,
+  savedProfile,
+  mobileRuntimeNeedsBackend = false
+}: {
+  robot: Robot;
+  integration: IntegrationStatus;
+  settings: AppSettings;
+  savedProfile?: RobotProfile;
+  mobileRuntimeNeedsBackend?: boolean;
+}) => {
+  const isConnected = robot.isConnected && integration.robotReachable;
+  const hasTarget = hasSavedTarget(settings, integration, savedProfile);
+
+  if (settings.mockMode || integration.mockMode || isConnected) {
+    return false;
+  }
+
+  if (mobileRuntimeNeedsBackend) {
+    return true;
+  }
+
+  return !hasTarget;
+};
+
+export const shouldOpenDashboardOnStartup = ({
+  robot,
+  integration,
+  settings
+}: {
+  robot: Robot;
+  integration: IntegrationStatus;
+  settings: AppSettings;
+}) => {
+  if (settings.mockMode || integration.mockMode) {
+    return false;
+  }
+
+  return Boolean(robot.isConnected && integration.robotReachable);
+};
+
 export const buildStartupGuide = ({
   robot,
   integration,
@@ -63,15 +106,25 @@ export const buildStartupGuide = ({
   const hasTarget = hasSavedTarget(settings, integration, savedProfile);
   const hasScannedCandidates = availableRobots.length > 0;
   const localSetupComplete = wirePodSetup?.initialSetupComplete ?? true;
-  const needsRobotPairing = wirePodSetup?.needsRobotPairing ?? false;
+  const needsRobotPairing = Boolean(
+    wirePodSetup?.needsRobotPairing ||
+      (!hasTarget &&
+        wirePodSetup?.initialSetupComplete &&
+        wirePodSetup.discoveredRobotCount === 0 &&
+        !hasScannedCandidates)
+  );
+  const bridgeRoutesUnresponsive =
+    integration.wirePodReachable &&
+    !integration.robotReachable &&
+    Boolean(integration.note?.toLowerCase().includes("routes are not responding"));
 
   const checklist: StartupChecklistItem[] = [
     {
       id: "wirepod",
-      title: "Local brain available",
+      title: "Local bridge available",
       detail: integration.wirePodReachable
-        ? `WirePod answered at ${integration.wirePodBaseUrl}.`
-        : "WirePod is not reachable yet on this computer.",
+        ? `${integration.bridgeLabel || "The local bridge"} answered at ${integration.wirePodBaseUrl}.`
+        : "The local bridge is not reachable yet on this computer.",
       done: integration.wirePodReachable
     },
     {
@@ -94,10 +147,12 @@ export const buildStartupGuide = ({
 
   const firstRunSteps = [
     localSetupComplete
-      ? "Local WirePod setup is already complete on this computer."
+      ? "Local bridge setup is already complete on this computer."
       : "Use Finish local setup automatically to apply the default language and Escape Pod mode here.",
     needsRobotPairing
       ? "Open the robot pairing portal once so Vector can complete the Bluetooth and Wi-Fi handshake."
+      : bridgeRoutesUnresponsive
+        ? "The local bridge already knows a robot, but its SDK routes timed out. Retry connection or restart WirePod instead of pairing again."
       : "Once Vector is authenticated, scan or save the serial here.",
     "Return here, scan or save the serial, then press Connect.",
     "Once Vector answers here, the rest of the dashboard is ready."
@@ -110,7 +165,7 @@ export const buildStartupGuide = ({
       description:
         settings.mockMode || integration.mockMode
           ? "The phone app is in demo mode right now. Save the desktop or LAN backend URL first so you can leave mock mode without breaking commands."
-          : "This phone shell is ready, but it still needs the desktop or LAN backend URL before it can reach WirePod or your robot.",
+          : "This phone shell is ready, but it still needs the desktop or LAN backend URL before it can reach the local bridge or your robot.",
       nextTitle: "Open Settings and save the backend URL first.",
       nextDetail:
         settings.mockMode || integration.mockMode
@@ -118,7 +173,7 @@ export const buildStartupGuide = ({
           : "Use a LAN address like http://192.168.x.x:8787 while your phone and desktop are on the same Wi-Fi. After that, this screen can reconnect normally.",
       modeLabel: settings.mockMode || integration.mockMode ? "Mobile demo mode" : "Mobile shell mode",
       modeDetail:
-        "The phone UI is running locally on your device. The Node backend and WirePod still live on your desktop or another LAN machine for now.",
+        "The phone UI is running locally on your device. The Node backend and local bridge still live on your desktop or another LAN machine for now.",
       dependencyLabel: "Missing step: mobile backend URL",
       dependencyDetail:
         "Without a saved backend target, the mobile shell only knows its own WebView and cannot reach the desktop service that talks to Vector.",
@@ -145,10 +200,10 @@ export const buildStartupGuide = ({
         "Mock mode keeps the interface testable, but commands and voice actions will not go to Vector.",
       modeLabel: "Mock mode",
       modeDetail:
-        "Use this when WirePod or Vector is not ready yet and you still want to learn the layout.",
+        "Use this when the local bridge or Vector is not ready yet and you still want to learn the layout.",
       dependencyLabel: "Real robot path paused",
       dependencyDetail:
-        "Turn off mock mode first, then reconnect through the local WirePod bridge.",
+        "Turn off mock mode first, then reconnect through the local bridge.",
       checklist,
       firstRunSteps,
       showDemoOption: false,
@@ -167,9 +222,9 @@ export const buildStartupGuide = ({
         "This startup screen has done its job. You only need to come back here if the local link drops.",
       modeLabel: "Real robot mode",
       modeDetail:
-        "Commands go through the app backend, then local WirePod, then to Vector. You do not need to keep the WirePod UI open.",
+        "Commands go through the app backend, then the local bridge, then to Vector. You do not need to keep the provider UI open.",
       dependencyLabel: "Everything needed is online",
-      dependencyDetail: "WirePod is reachable, the robot target is saved, and Vector is responding live.",
+      dependencyDetail: "The local bridge is reachable, the robot target is saved, and Vector is responding live.",
       checklist,
       firstRunSteps,
       showDemoOption: false,
@@ -180,18 +235,18 @@ export const buildStartupGuide = ({
   if (!integration.wirePodReachable) {
     return {
       stage: "wirepod-missing",
-      headline: "Start the local Vector brain first.",
+      headline: "Start the local bridge first.",
       description:
-        "The app cannot reach WirePod yet, so there is nothing safe to send to the robot.",
-      nextTitle: "Bring WirePod online, then try Connect again.",
+        "The app cannot reach the local bridge yet, so there is nothing safe to send to the robot.",
+      nextTitle: "Bring the local bridge online, then try Connect again.",
       nextDetail:
         "Quick repair can try the local start path first. If this is your first setup, follow the beginner steps on the right.",
       modeLabel: "Real robot mode",
       modeDetail:
         "This mode talks to your actual robot. If the local bridge is missing, the app will say so instead of pretending commands worked.",
-      dependencyLabel: "Missing dependency: WirePod",
+      dependencyLabel: "Missing dependency: local bridge",
       dependencyDetail:
-        "WirePod is required for real robot control. The app can still switch into mock mode if you just want a demo.",
+        "A reachable local bridge is required for real robot control. The app can still switch into mock mode if you just want a demo.",
       checklist,
       firstRunSteps,
       showDemoOption: true,
@@ -204,16 +259,16 @@ export const buildStartupGuide = ({
       stage: "wirepod-setup",
       headline: "Finish the one-time local setup first.",
       description:
-        "WirePod is running, but its first-run setup is not fully applied yet. The app can take care of the default setup for you here.",
+        "The local bridge is running, but its first-run setup is not fully applied yet. The app can take care of the default setup for you here.",
       nextTitle: "Finish local setup, then pair the robot once if needed.",
       nextDetail:
-        "This app can apply the default WirePod settings automatically. The robot-side Bluetooth and Wi-Fi handshake still has to happen once.",
+        "This app can apply the default local bridge settings automatically. The robot-side Bluetooth and Wi-Fi handshake still has to happen once.",
       modeLabel: "Real robot mode",
       modeDetail:
-        "The app can hide most of the WirePod steps, but the robot still needs one real pairing handshake the first time.",
+        "The app can hide most of the compatibility-bridge steps, but the robot still needs one real pairing handshake the first time.",
       dependencyLabel: "One-time local setup still needed",
       dependencyDetail:
-        "Finish the WirePod setup defaults first, then move on to the saved-target and live-link steps.",
+        "Finish the local bridge setup defaults first, then move on to the saved-target and live-link steps.",
       checklist,
       firstRunSteps,
       showDemoOption: true,
@@ -226,7 +281,7 @@ export const buildStartupGuide = ({
       stage: "needs-target",
       headline: "Choose which Vector to reconnect to.",
       description:
-        "WirePod is online, but the app still needs a saved robot target before it can reconnect cleanly.",
+        "The local bridge is online, but the app still needs a saved robot target before it can reconnect cleanly.",
       nextTitle: hasScannedCandidates ? "Pick a found robot or open pairing." : "Scan the network, then save a robot target.",
       nextDetail:
         "Once a serial is saved, the startup screen can reconnect to the same robot automatically on the next launch.",
@@ -249,16 +304,20 @@ export const buildStartupGuide = ({
     stage: "robot-offline",
     headline: "The bridge is up, but Vector is not answering yet.",
     description:
-      "WirePod is reachable and the target is saved, but the robot link itself still needs a little help.",
+      "The local bridge is reachable and the target is saved, but the robot link itself still needs a little help.",
     nextTitle: "Try a reconnect or quick repair next.",
     nextDetail:
-      "This usually means Vector is off Wi-Fi, sleepy, on the wrong network, or the saved target needs a fresh scan.",
+      bridgeRoutesUnresponsive
+        ? "The local bridge answered, but the robot SDK routes timed out. Retry once, then restart WirePod or the desktop backend if quick repair stays partial."
+        : "This usually means Vector is off Wi-Fi, sleepy, on the wrong network, or the saved target needs a fresh scan.",
     modeLabel: "Real robot mode",
     modeDetail:
       "The app is already talking to the local bridge. What is missing now is the final robot response.",
     dependencyLabel: "Live robot response missing",
     dependencyDetail:
-      "Reconnect first. If that still fails, use quick repair and then scan again if needed.",
+      bridgeRoutesUnresponsive
+        ? "Reconnect first. If that still fails, restart WirePod or the desktop backend, then try quick repair again."
+        : "Reconnect first. If that still fails, use quick repair and then scan again if needed.",
     checklist,
     firstRunSteps,
     showDemoOption: true,

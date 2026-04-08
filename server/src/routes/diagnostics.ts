@@ -23,6 +23,12 @@ export const createDiagnosticsRouter = (controller: RobotController) => {
     });
   }));
 
+  router.get("/watchdog", asyncRoute(async (_request: Request, response: Response) => {
+    response.json({
+      watchdog: await controller.getBridgeWatchdogStatus()
+    });
+  }));
+
   router.post("/voice/repair", asyncRoute(async (_request: Request, response: Response) => {
     response.json({
       log: await controller.repairVoiceSetup(),

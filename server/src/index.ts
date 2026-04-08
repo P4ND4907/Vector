@@ -7,6 +7,7 @@ import { createAppRouter } from "./routes/app.js";
 import { createAiRouter } from "./routes/ai.js";
 import { createDiagnosticsRouter } from "./routes/diagnostics.js";
 import { createLogRouter } from "./routes/logs.js";
+import { createMonetizationRouter } from "./routes/monetization.js";
 import { createRobotRouter } from "./routes/robot.js";
 import { createRoutineRouter } from "./routes/routines.js";
 import { createSettingsRouter } from "./routes/settings.js";
@@ -41,6 +42,7 @@ export const createServerApp = (env = buildEnv()) => {
   app.use("/api/diagnostics", createDiagnosticsRouter(controller));
   app.use("/api/settings", createSettingsRouter(controller));
   app.use("/api/support", createSupportRouter(controller));
+  app.use("/api/monetization", createMonetizationRouter(env));
 
   app.get("/vector/status", async (_request: Request, response: Response, next: NextFunction) => {
     try {

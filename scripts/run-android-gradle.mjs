@@ -122,7 +122,10 @@ const main = async () => {
 
   const isWindows = process.platform === "win32";
   const command = isWindows ? process.env.ComSpec || "C:\\Windows\\System32\\cmd.exe" : gradleWrapper;
-  const args = isWindows ? ["/d", "/s", "/c", gradleWrapper, task, "--stacktrace"] : [task, "--stacktrace"];
+  const tasks = /Release$/i.test(task) && task.toLowerCase() !== "clean" ? ["clean", task] : [task];
+  const args = isWindows
+    ? ["/d", "/s", "/c", gradleWrapper, ...tasks, "--stacktrace"]
+    : [...tasks, "--stacktrace"];
 
   const child = spawn(command, args, {
     cwd: androidRoot,

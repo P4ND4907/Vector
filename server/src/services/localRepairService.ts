@@ -9,6 +9,8 @@ export interface LocalRepairLaunchResult {
   message: string;
 }
 
+const getExistingCandidatePaths = () => buildCandidatePaths().filter((candidate) => existsSync(candidate));
+
 const buildCandidatePaths = () => {
   const localPrograms = process.env.LOCALAPPDATA
     ? path.join(process.env.LOCALAPPDATA, "Programs", "wire-pod", "chipper.exe")
@@ -24,13 +26,10 @@ const buildCandidatePaths = () => {
 
 export const createLocalRepairService = () => ({
   getCandidatePaths: buildCandidatePaths,
+  hasKnownInstall: () => getExistingCandidatePaths().length > 0,
 
   async tryStartWirePod(): Promise<LocalRepairLaunchResult> {
-    for (const executablePath of buildCandidatePaths()) {
-      if (!existsSync(executablePath)) {
-        continue;
-      }
-
+    for (const executablePath of getExistingCandidatePaths()) {
       try {
         const child = spawn(executablePath, [], {
           detached: true,
@@ -43,14 +42,14 @@ export const createLocalRepairService = () => ({
           attempted: true,
           launched: true,
           executablePath,
-          message: "Tried starting the local Vector brain from this computer."
+          message: "Tried starting the local bridge from this computer."
         };
       } catch (error) {
         return {
           attempted: true,
           launched: false,
           executablePath,
-          message: error instanceof Error ? error.message : "WirePod could not be launched from the app."
+          message: error instanceof Error ? error.message : "The local bridge could not be launched from the app."
         };
       }
     }
@@ -58,7 +57,7 @@ export const createLocalRepairService = () => ({
     return {
       attempted: false,
       launched: false,
-      message: "No local WirePod installation was found in the expected Windows locations."
+      message: "No compatible local bridge installation was found in the expected Windows locations."
     };
   }
 });

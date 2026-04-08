@@ -2,16 +2,26 @@ import type {
   ParsedAiAction,
   ParsedAiCommand,
   RobotController,
-  RobotStatus
+  RobotStatus,
+  RoamBehavior
 } from "../robot/types.js";
 import {
   buildChargingProtectionMessage,
   isChargingProtectionActive
 } from "./chargingProtectionService.js";
+import { resolveFaceCue, type FaceCueKey } from "./faceCueRegistry.js";
+import {
+  findLearnedCommand,
+  normalizeLearnedCommandPhrase
+} from "./learnedCommandsService.js";
+import { personality } from "./personalityService.js";
 import { fetchWeatherSummary } from "./weatherService.js";
-import { matchVectorCommand } from "./vectorCommandRegistry.js";
+import {
+  matchVectorCommand,
+  normalizeVectorCommandInput
+} from "./vectorCommandRegistry.js";
 
-const normalize = (value: string) => value.trim().toLowerCase();
+const normalize = (value: string) => normalizeVectorCommandInput(value);
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -35,8 +45,7 @@ const splitPrompt = (prompt: string) =>
 const defaultDriveDurationMs = (direction: string) =>
   direction === "left" || direction === "right" ? 750 : 1200;
 
-const HELP_RESPONSE =
-  "Try hello, what time is it, what's the weather, take a picture, roll a die, drive forward, go dock, run diagnostics, or my name is followed by your name.";
+const HELP_RESPONSE = personality.help();
 
 let activeTimer:
   | {
@@ -161,7 +170,7 @@ const parseBuiltInSegment = (segment: string): ParsedAiAction | null => {
     });
   }
 
-  if (/^(stop|halt|freeze)/i.test(normalized)) {
+  if (/^(?:stop|halt|freeze)$/i.test(normalized)) {
     return buildAction("stop", "Stop movement", { direction: "stop", speed: 0 });
   }
 
@@ -184,11 +193,11 @@ const parseBuiltInSegment = (segment: string): ParsedAiAction | null => {
     return buildAction("volume", `Set volume to ${volume}`, { volume });
   }
 
-  if (/check battery|battery status|check status|status/i.test(normalized)) {
+  if (/^(?:check battery|battery status|check status|status)$/i.test(normalized)) {
     return buildAction("status", "Check battery and robot status", {});
   }
 
-  if (/patrol|roam|explore/i.test(normalized)) {
+  if (/^(?:patrol|roam|explore)$/i.test(normalized)) {
     return buildAction("roam", "Start patrol behavior", { animationId: "idle-scan" });
   }
 
@@ -204,6 +213,204 @@ const parseBuiltInSegment = (segment: string): ParsedAiAction | null => {
 
 const parseSegment = (segment: string): ParsedAiAction | null =>
   parseBuiltInSegment(segment) ?? matchVectorCommand(segment);
+
+const buildParsedCommand = (
+  prompt: string,
+  actions: ParsedAiAction[],
+  warnings: string[] = []
+): ParsedAiCommand => ({
+  id: crypto.randomUUID(),
+  prompt,
+  summary: actions.length
+    ? actions.map((action) => action.label).join(" then ")
+    : "No executable action detected.",
+  source: "rules",
+  warnings,
+  canExecute: actions.length > 0,
+  actions
+});
+
+const buildUnsupportedCommand = (prompt: string, warnings: string[]) =>
+  buildParsedCommand(prompt, [], warnings);
+
+const trimWrappingQuotes = (value: string) =>
+  value
+    .trim()
+    .replace(/^["'`]+/, "")
+    .replace(/["'`]+$/, "")
+    .trim();
+
+const buildLearnSuggestion = (prompt: string) => {
+  const normalizedPrompt = normalizeLearnedCommandPhrase(prompt);
+  if (!normalizedPrompt) {
+    return 'Try teaching it with: learn that "movie time" means "play a classic".';
+  }
+
+  return `Try teaching it with: learn that "${normalizedPrompt}" means "go dock".`;
+};
+
+const parseTeachCommand = (prompt: string) => {
+  const patterns = [
+    /^(?:learn|remember|teach(?:\s+vector)?)\s+(?:that\s+)?(.+?)\s+(?:means?|should mean|as)\s+(.+)$/i,
+    /^when\s+i\s+say\s+(.+?)\s+(?:means?|do|run|treat it as)\s+(.+)$/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = prompt.trim().match(pattern);
+    if (!match) {
+      continue;
+    }
+
+    const phrase = trimWrappingQuotes(match[1] ?? "");
+    const targetPrompt = trimWrappingQuotes(match[2] ?? "");
+    if (phrase && targetPrompt) {
+      return { phrase, targetPrompt };
+    }
+  }
+
+  return undefined;
+};
+
+const parseForgetCommand = (prompt: string) => {
+  const match = prompt
+    .trim()
+    .match(/^(?:forget|unlearn|remove)\s+(?:the\s+phrase\s+)?(.+)$/i);
+
+  if (!match) {
+    return undefined;
+  }
+
+  const phrase = trimWrappingQuotes(match[1] ?? "");
+  return phrase ? { phrase } : undefined;
+};
+
+const isListLearnedCommandsPrompt = (prompt: string) =>
+  /^(?:what have you learned|what did you learn|show learned commands|list learned commands|what learned commands do you know|show custom phrases|list custom phrases)$/i.test(
+    prompt.trim()
+  );
+
+interface PreviewAiCommandOptions {
+  controller?: RobotController;
+  visitedPrompts?: Set<string>;
+  skipTeachParsing?: boolean;
+  skipLearnedLookup?: boolean;
+}
+
+const previewAiCommandInternal = async (
+  prompt: string,
+  options: PreviewAiCommandOptions = {}
+): Promise<ParsedAiCommand> => {
+  const trimmedPrompt = prompt.trim();
+  const controller = options.controller;
+  const visitedPrompts = options.visitedPrompts ?? new Set<string>();
+
+  if (!options.skipTeachParsing) {
+    const teachCommand = parseTeachCommand(trimmedPrompt);
+    if (teachCommand) {
+      const normalizedPhrase = normalizeLearnedCommandPhrase(teachCommand.phrase);
+      const normalizedTargetPrompt = normalizeLearnedCommandPhrase(teachCommand.targetPrompt);
+
+      if (!normalizedPhrase || !normalizedTargetPrompt) {
+        return buildUnsupportedCommand(trimmedPrompt, [
+          "I need both the new phrase and the command it should mean."
+        ]);
+      }
+
+      if (normalizedPhrase === normalizedTargetPrompt) {
+        return buildUnsupportedCommand(trimmedPrompt, [
+          "That learned phrase points back to itself. Try mapping it to a different command."
+        ]);
+      }
+
+      const existingBuiltIn = parseSegment(teachCommand.phrase);
+      if (existingBuiltIn) {
+        return buildUnsupportedCommand(trimmedPrompt, [
+          `That phrase already works as ${existingBuiltIn.label}. Try teaching a phrase I do not know yet.`
+        ]);
+      }
+
+      const targetPreview = await previewAiCommandInternal(teachCommand.targetPrompt, {
+        controller,
+        visitedPrompts: new Set(visitedPrompts),
+        skipTeachParsing: true
+      });
+
+      if (!targetPreview.canExecute) {
+        return buildUnsupportedCommand(trimmedPrompt, [
+          `I can learn "${teachCommand.phrase}", but "${teachCommand.targetPrompt}" is not a command I can run yet.`
+        ]);
+      }
+
+      return buildParsedCommand(trimmedPrompt, [
+        buildAction("assistant", `Learn "${teachCommand.phrase}"`, {
+          kind: "teach-command",
+          phrase: teachCommand.phrase,
+          targetPrompt: teachCommand.targetPrompt,
+          targetSummary: targetPreview.summary
+        })
+      ]);
+    }
+
+    const forgetCommand = parseForgetCommand(trimmedPrompt);
+    if (forgetCommand) {
+      return buildParsedCommand(trimmedPrompt, [
+        buildAction("assistant", `Forget "${forgetCommand.phrase}"`, {
+          kind: "forget-command",
+          phrase: forgetCommand.phrase
+        })
+      ]);
+    }
+
+    if (isListLearnedCommandsPrompt(trimmedPrompt)) {
+      return buildParsedCommand(trimmedPrompt, [
+        buildAction("assistant", "List learned phrases", {
+          kind: "list-learned-commands"
+        })
+      ]);
+    }
+  }
+
+  if (controller && !options.skipLearnedLookup) {
+    const normalizedPrompt = normalizeLearnedCommandPhrase(trimmedPrompt);
+    if (normalizedPrompt) {
+      if (visitedPrompts.has(normalizedPrompt)) {
+        return buildUnsupportedCommand(trimmedPrompt, [
+          `I hit a loop while resolving the learned phrase "${trimmedPrompt}".`
+        ]);
+      }
+
+      const learnedCommand = findLearnedCommand(await controller.getLearnedCommands(), trimmedPrompt);
+      if (learnedCommand) {
+        const nextVisitedPrompts = new Set(visitedPrompts);
+        nextVisitedPrompts.add(normalizedPrompt);
+        const resolvedPreview = await previewAiCommandInternal(learnedCommand.targetPrompt, {
+          controller,
+          visitedPrompts: nextVisitedPrompts,
+          skipTeachParsing: true
+        });
+
+        if (!resolvedPreview.canExecute) {
+          return buildUnsupportedCommand(trimmedPrompt, [
+            `I learned "${learnedCommand.phrase}", but its target command "${learnedCommand.targetPrompt}" is not available right now.`
+          ]);
+        }
+
+        return buildParsedCommand(trimmedPrompt, resolvedPreview.actions);
+      }
+    }
+  }
+
+  const segments = splitPrompt(trimmedPrompt);
+  const actions = segments.map(parseSegment).filter(Boolean) as ParsedAiAction[];
+
+  if (!actions.length) {
+    return buildUnsupportedCommand(trimmedPrompt, [
+      `I could not map that request to a supported Vector action yet. ${buildLearnSuggestion(trimmedPrompt)}`
+    ]);
+  }
+
+  return buildParsedCommand(trimmedPrompt, actions);
+};
 
 const speakOnly = async (controller: RobotController, text: string) => {
   const log = await controller.speak({ text });
@@ -226,6 +433,23 @@ const playVisualCue = async (
   }
 };
 
+const playRegisteredCue = async (
+  controller: RobotController,
+  cueKey: FaceCueKey,
+  status?: RobotStatus | null
+) => {
+  const cue = resolveFaceCue(cueKey, status);
+  const played = await playVisualCue(controller, cue.animationId, cue.holdMs);
+
+  if (!played && cue.fallbackAnimationId) {
+    await playVisualCue(
+      controller,
+      cue.fallbackAnimationId,
+      cue.fallbackHoldMs ?? Math.min(cue.holdMs, 325)
+    );
+  }
+};
+
 const playCueAndSpeak = async (
   controller: RobotController,
   {
@@ -239,6 +463,26 @@ const playCueAndSpeak = async (
   }
 ) => {
   await playVisualCue(controller, animationId, holdMs);
+  return speakOnly(controller, spokenText);
+};
+
+const playCueAndSpeakFromRegistry = async (
+  controller: RobotController,
+  cueKey: FaceCueKey,
+  spokenText: string,
+  status?: RobotStatus | null
+) => {
+  const cue = resolveFaceCue(cueKey, status);
+  const played = await playVisualCue(controller, cue.animationId, cue.holdMs);
+
+  if (!played && cue.fallbackAnimationId) {
+    await playVisualCue(
+      controller,
+      cue.fallbackAnimationId,
+      cue.fallbackHoldMs ?? Math.min(cue.holdMs, 325)
+    );
+  }
+
   return speakOnly(controller, spokenText);
 };
 
@@ -259,17 +503,46 @@ const runAssistantAction = async (
         return "I still need the name to save.";
       }
       await controller.updateSettings({ userName: name });
-      return speakOnly(controller, `Got it. I'll remember that your name is ${name}.`);
+      return speakOnly(controller, personality.saveUserName(name));
     }
 
     case "get-user-name": {
       const settings = await controller.getSettings();
+      return speakOnly(controller, personality.recallUserName(settings.userName));
+    }
+
+    case "teach-command": {
+      const phrase = readStringParam(action, "phrase");
+      const targetPrompt = readStringParam(action, "targetPrompt");
+      const targetSummary = readOptionalStringParam(action, "targetSummary");
+
+      if (!phrase || !targetPrompt) {
+        return speakOnly(controller, "I need both the new phrase and the command it should mean.");
+      }
+
+      const learnedCommand = await controller.saveLearnedCommand({ phrase, targetPrompt });
       return speakOnly(
         controller,
-        settings.userName
-          ? `Your name is ${settings.userName}.`
-          : "I do not know your name yet. Say my name is and then your name."
+        personality.learnedCommandSaved(
+          learnedCommand.phrase,
+          targetSummary || learnedCommand.targetPrompt
+        )
       );
+    }
+
+    case "forget-command": {
+      const phrase = readStringParam(action, "phrase");
+      if (!phrase) {
+        return speakOnly(controller, "Tell me which learned phrase to forget.");
+      }
+
+      const removed = await controller.deleteLearnedCommand({ phrase });
+      return speakOnly(controller, personality.learnedCommandForgotten(phrase, Boolean(removed)));
+    }
+
+    case "list-learned-commands": {
+      const learnedCommands = await controller.getLearnedCommands();
+      return speakOnly(controller, personality.learnedCommandsList(learnedCommands));
     }
 
     case "weather":
@@ -277,27 +550,27 @@ const runAssistantAction = async (
       const settings = await controller.getSettings();
       const requestedLocation = readOptionalStringParam(action, "location");
       const location = requestedLocation || settings.weatherLocation || "Anchorage, Alaska";
-      let animationId = "question-prompt";
       if (location !== settings.weatherLocation) {
         await controller.updateSettings({ weatherLocation: location });
       }
 
-      if (kind === "weather" && !requestedLocation) {
-        try {
-          const weatherConfig = await controller.getWirePodWeatherConfig();
-          if (weatherConfig.enable && weatherConfig.provider && weatherConfig.key) {
-            animationId = "weather-report";
-          }
-        } catch {
-          // If the stock weather routine is unavailable, still use a safe on-robot visual cue.
-        }
+      const currentStatus = await Promise.resolve(controller.getStatus()).catch(() => null);
+      await playRegisteredCue(
+        controller,
+        kind === "weather-tomorrow" ? "weather-tomorrow" : "weather-current",
+        currentStatus
+      );
+
+      try {
+        const summary = await fetchWeatherSummary(location, kind === "weather-tomorrow" ? 1 : 0);
+        return speakOnly(controller, summary);
+      } catch (error) {
+        const failureMessage = error instanceof Error && error.message.trim()
+          ? error.message
+          : personality.weatherFailure(location);
+
+        return speakOnly(controller, failureMessage);
       }
-
-      await playVisualCue(controller, animationId, animationId === "weather-report" ? 500 : 325);
-
-      const summary = await fetchWeatherSummary(location, kind === "weather-tomorrow" ? 1 : 0);
-
-      return speakOnly(controller, summary);
     }
 
     case "stock-intent": {
@@ -305,6 +578,16 @@ const runAssistantAction = async (
 
       if (!intent) {
         return spokenResponse || "That stock Vector action is missing its intent mapping.";
+      }
+
+      if (intent === "intent_play_blackjack") {
+        const status = await Promise.resolve(controller.getStatus()).catch(() => null);
+        return playCueAndSpeakFromRegistry(
+          controller,
+          "blackjack",
+          spokenResponse || "Blackjack time.",
+          status
+        );
       }
 
       try {
@@ -324,7 +607,7 @@ const runAssistantAction = async (
       const durationLabel = readOptionalStringParam(action, "durationLabel");
 
       if (!durationMs) {
-        return speakOnly(controller, "I need a timer length like 5 minutes or 30 seconds.");
+        return speakOnly(controller, personality.timerMissing());
       }
 
       activeTimer = {
@@ -334,30 +617,30 @@ const runAssistantAction = async (
         label: durationLabel || formatDuration(durationMs)
       };
 
-      return speakOnly(controller, `Timer set for ${activeTimer.label}.`);
+      return speakOnly(controller, personality.timerSet(activeTimer.label));
     }
 
     case "check-timer": {
       if (!activeTimer) {
-        return speakOnly(controller, "There is no active timer right now.");
+        return speakOnly(controller, personality.timerNone());
       }
 
       const remainingMs = activeTimer.endsAt - Date.now();
       if (remainingMs <= 0) {
         activeTimer = null;
-        return speakOnly(controller, "The timer has already finished.");
+        return speakOnly(controller, personality.timerFinished());
       }
 
-      return speakOnly(controller, `Timer status. ${formatRemainingTimer(remainingMs)}`);
+      return speakOnly(controller, personality.timerRemaining(formatRemainingTimer(remainingMs)));
     }
 
     case "cancel-timer": {
       if (!activeTimer) {
-        return speakOnly(controller, "There is no active timer to cancel.");
+        return speakOnly(controller, personality.timerNone());
       }
 
       activeTimer = null;
-      return speakOnly(controller, "Timer cancelled.");
+      return speakOnly(controller, personality.timerCancelled());
     }
 
     case "time-lookup": {
@@ -365,40 +648,27 @@ const runAssistantAction = async (
         hour: "numeric",
         minute: "2-digit"
       });
-      return speakOnly(controller, `It is ${now}.`);
+      return speakOnly(controller, personality.timeNow(now));
     }
 
     case "battery-status": {
       const status = await controller.getStatus();
-      const chargingText = status.isCharging
-        ? "and charging"
-        : status.isDocked
-          ? "and resting on the charger"
-          : "and off the charger";
-      return speakOnly(
-        controller,
-        `${status.nickname ?? status.name} is at ${status.batteryPercent} percent battery ${chargingText}.`
-      );
+      return speakOnly(controller, personality.batteryStatus(status));
     }
 
     case "connect": {
       const status = await controller.connect();
-      return speakOnly(
-        controller,
-        status.isConnected
-          ? `${status.nickname ?? status.name} is connected and ready.`
-          : "I could not bring Vector online yet."
-      );
+      return speakOnly(controller, personality.connectStatus(status));
     }
 
     case "disconnect": {
       const status = await controller.disconnect();
-      return `${status.nickname ?? status.name} disconnected safely.`;
+      return personality.disconnectStatus(status.nickname ?? status.name);
     }
 
     case "diagnostics": {
       const report = await controller.runDiagnostics();
-      return speakOnly(controller, report.summary);
+      return speakOnly(controller, personality.diagnosticsSummary(report));
     }
 
     case "set-robot-name": {
@@ -408,12 +678,12 @@ const runAssistantAction = async (
       }
 
       await controller.connect({ nickname: name, name });
-      return speakOnly(controller, `Okay. I will call this robot ${name}.`);
+      return speakOnly(controller, personality.robotNameSaved(name));
     }
 
     case "get-robot-name": {
       const status = await controller.getStatus();
-      return speakOnly(controller, `My name is ${status.nickname ?? status.name}.`);
+      return speakOnly(controller, personality.robotNameReply(status.nickname ?? status.name));
     }
 
     case "switch-language": {
@@ -423,10 +693,7 @@ const runAssistantAction = async (
       }
 
       await controller.updateSettings({ preferredLanguage: language });
-      return speakOnly(
-        controller,
-        `Okay. I will remember ${language} as the preferred language for app commands.`
-      );
+      return speakOnly(controller, personality.languageSaved(language));
     }
 
     case "translate-phrase": {
@@ -440,66 +707,165 @@ const runAssistantAction = async (
         matchedIntent: commandKey,
         suggestedArea: "translation"
       });
-      return speakOnly(
-        controller,
-        language
-          ? `I heard the translation request for ${phrase} in ${language}. Live translation is not wired yet.`
-          : `I heard the translation request for ${phrase}. Live translation is not wired yet.`
-      );
+      return speakOnly(controller, personality.translationUnavailable(phrase, language));
     }
 
     case "roll-die": {
       const roll = 1 + Math.floor(Math.random() * 6);
       const status = await Promise.resolve(controller.getStatus()).catch(() => null);
-      const animationId =
-        status && !status.isDocked && !status.isCharging ? "game-time" : "question-prompt";
-      await playVisualCue(controller, animationId, animationId === "game-time" ? 450 : 250);
-      return speakOnly(controller, `I rolled a ${roll}.`);
+      await playRegisteredCue(controller, "dice-roll", status);
+      return speakOnly(controller, personality.diceRoll(roll));
+    }
+
+    case "flip-coin": {
+      const result: "heads" | "tails" = Math.random() >= 0.5 ? "heads" : "tails";
+      const status = await Promise.resolve(controller.getStatus()).catch(() => null);
+      return playCueAndSpeakFromRegistry(controller, "coin-flip", personality.coinFlip(result), status);
+    }
+
+    case "rock-paper-scissors": {
+      const choices = ["rock", "paper", "scissors"] as const;
+      const choice = choices[Math.floor(Math.random() * choices.length)] ?? "rock";
+      const status = await Promise.resolve(controller.getStatus()).catch(() => null);
+      await playRegisteredCue(controller, "game-start", status);
+      return speakOnly(controller, personality.rockPaperScissors(choice));
     }
 
     case "quit-blackjack": {
-      return playCueAndSpeak(controller, {
-        animationId: "goodbye-nod",
-        spokenText: spokenResponse || "Ending blackjack.",
-        holdMs: 250
-      });
+      const status = await Promise.resolve(controller.getStatus()).catch(() => null);
+      return playCueAndSpeakFromRegistry(controller, "farewell", spokenResponse || "Ending blackjack.", status);
     }
 
     case "listen-to-music": {
       return playCueAndSpeak(controller, {
-        animationId: "celebrate-spark",
+        animationId: resolveFaceCue("music").animationId,
         spokenText: spokenResponse || "Music listening mode enabled.",
         holdMs: 300
       });
     }
 
     case "play-new-game": {
-      return playCueAndSpeak(controller, {
-        animationId: "game-time",
-        spokenText: spokenResponse || "Starting new game mode.",
-        holdMs: 450
-      });
+      const status = await Promise.resolve(controller.getStatus()).catch(() => null);
+      return playCueAndSpeakFromRegistry(controller, "game-start", spokenResponse || "Starting new game mode.", status);
     }
 
     case "play-classic-game": {
-      try {
-        await controller.animation({ animationId: "intent_play_blackjack" });
-        return spokenResponse || "Starting classic game mode.";
-      } catch {
-        return playCueAndSpeak(controller, {
-          animationId: "game-time",
-          spokenText: spokenResponse || "Starting classic game mode.",
-          holdMs: 450
-        });
-      }
+      const status = await Promise.resolve(controller.getStatus()).catch(() => null);
+      return playCueAndSpeakFromRegistry(controller, "blackjack", spokenResponse || "Starting classic game mode.", status);
     }
 
     case "play-bingo": {
-      return playCueAndSpeak(controller, {
-        animationId: "game-time",
-        spokenText: spokenResponse || "Bingo mode activated.",
-        holdMs: 450
+      const status = await Promise.resolve(controller.getStatus()).catch(() => null);
+      return playCueAndSpeakFromRegistry(controller, "game-start", spokenResponse || "Bingo mode activated.", status);
+    }
+
+    case "fun-snore": {
+      const status = await Promise.resolve(controller.getStatus()).catch(() => null);
+      return playCueAndSpeakFromRegistry(controller, "snore", personality.snore(), status);
+    }
+
+    case "fun-laugh": {
+      const status = await Promise.resolve(controller.getStatus()).catch(() => null);
+      return playCueAndSpeakFromRegistry(controller, "laugh", personality.laugh(), status);
+    }
+
+    case "fun-sing": {
+      const status = await Promise.resolve(controller.getStatus()).catch(() => null);
+      return playCueAndSpeakFromRegistry(controller, "sing", personality.sing(), status);
+    }
+
+    case "fun-joke": {
+      const status = await Promise.resolve(controller.getStatus()).catch(() => null);
+      return playCueAndSpeakFromRegistry(controller, "joke", personality.joke(), status);
+    }
+
+    case "fun-silly": {
+      const status = await Promise.resolve(controller.getStatus()).catch(() => null);
+      return playCueAndSpeakFromRegistry(controller, "silly", personality.sillyMode(), status);
+    }
+
+    case "discover-robots": {
+      const robots = await controller.discoverRobots();
+
+      if (!robots.length) {
+        return speakOnly(controller, personality.discoverRobotsNone());
+      }
+
+      if (robots.length === 1) {
+        return speakOnly(controller, personality.discoverRobotsOne(robots[0]?.name || "one robot"));
+      }
+
+      const names = robots
+        .slice(0, 3)
+        .map((robot) => robot.name)
+        .join(", ");
+      const extraCount = Math.max(0, robots.length - 3);
+      return speakOnly(
+        controller,
+        personality.discoverRobotsMany(names, extraCount)
+      );
+    }
+
+    case "quick-repair": {
+      const result = await controller.quickRepair();
+      return speakOnly(controller, personality.quickRepairSummary(result.summary));
+    }
+
+    case "voice-repair": {
+      const log = await controller.repairVoiceSetup();
+      return log.resultMessage;
+    }
+
+    case "automation-status": {
+      const automation = await controller.getAutomationControl();
+      const sessions = await controller.getRoamSessions();
+      const activeSession = automation.activeSessionId
+        ? sessions.find((session) => session.id === automation.activeSessionId)
+        : undefined;
+
+      if (automation.status === "idle") {
+        return speakOnly(controller, personality.automationIdle(automation.behavior, automation.targetArea));
+      }
+
+      return speakOnly(
+        controller,
+        activeSession
+          ? personality.automationActive(activeSession.name, automation.status, automation.behavior)
+          : personality.automationActive("Automation", automation.status, automation.behavior)
+      );
+    }
+
+    case "start-roam": {
+      const automation = await controller.getAutomationControl();
+      const requestedBehavior = readOptionalStringParam(action, "behavior");
+      const requestedTargetArea = readOptionalStringParam(action, "targetArea");
+      const behavior: RoamBehavior =
+        requestedBehavior === "quiet" || requestedBehavior === "explore"
+          ? requestedBehavior
+          : requestedBehavior === "patrol"
+            ? "patrol"
+            : automation.behavior;
+      const session = await controller.startRoam({
+        ...automation,
+        behavior,
+        targetArea: requestedTargetArea || automation.targetArea
       });
+      return speakOnly(controller, session.summary);
+    }
+
+    case "pause-roam": {
+      const session = await controller.pauseRoam();
+      return speakOnly(controller, session.summary);
+    }
+
+    case "resume-roam": {
+      const session = await controller.resumeRoam();
+      return speakOnly(controller, session.summary);
+    }
+
+    case "stop-roam": {
+      const session = await controller.stopRoam();
+      return speakOnly(controller, session.summary);
     }
 
     case "chat-with-user": {
@@ -509,7 +875,7 @@ const runAssistantAction = async (
       }
 
       await controller.updateSettings({ chatTarget: target });
-      return speakOnly(controller, `Okay. I will use ${target} as the current chat target.`);
+      return speakOnly(controller, personality.chatTargetSaved(target));
     }
 
     case "get-chat-target": {
@@ -590,27 +956,10 @@ const runAssistantAction = async (
   }
 };
 
-export const previewAiCommand = async (prompt: string): Promise<ParsedAiCommand> => {
-  const segments = splitPrompt(prompt);
-  const actions = segments.map(parseSegment).filter(Boolean) as ParsedAiAction[];
-  const warnings: string[] = [];
-
-  if (!actions.length) {
-    warnings.push("I could not map that request to a supported Vector action yet.");
-  }
-
-  return {
-    id: crypto.randomUUID(),
-    prompt,
-    summary: actions.length
-      ? actions.map((action) => action.label).join(" then ")
-      : "No executable action detected.",
-    source: "rules",
-    warnings,
-    canExecute: actions.length > 0,
-    actions
-  };
-};
+export const previewAiCommand = async (
+  prompt: string,
+  controller?: RobotController
+): Promise<ParsedAiCommand> => previewAiCommandInternal(prompt, { controller });
 
 export const executeAiCommand = async (
   controller: RobotController,
@@ -623,11 +972,6 @@ export const executeAiCommand = async (
   for (const action of parsed.actions) {
     if (action.type === "speak") {
       const text = String(action.params.text ?? "");
-      if (isChargingProtectionActive(settings, latestStatus)) {
-        results.push(buildChargingProtectionMessage("Speech requests"));
-        latestStatus = await controller.getStatus();
-        continue;
-      }
       const needsWake =
         !latestStatus.isConnected ||
         latestStatus.mood === "sleepy" ||
@@ -722,9 +1066,7 @@ export const executeAiCommand = async (
 
     if (action.type === "status") {
       const status = await controller.getStatus();
-      results.push(
-        `${status.nickname ?? status.name} is ${status.isConnected ? "online" : "offline"} with ${status.batteryPercent}% battery.`
-      );
+      results.push(personality.batteryStatus(status));
       latestStatus = status;
       continue;
     }

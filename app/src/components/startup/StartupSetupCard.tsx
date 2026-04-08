@@ -25,9 +25,9 @@ export function StartupSetupCard({
   const title = setup?.initialSetupComplete ? "Local setup is ready" : "Local setup still needs one pass";
   const description = setup
     ? setup.initialSetupComplete
-      ? `WirePod is set to ${setup.connectionMode === "escape-pod" ? "Escape Pod" : "IP"} mode with ${setup.sttLanguage}.`
-      : "The app can apply the default WirePod setup for you: English (US) plus Escape Pod mode."
-    : "Once WirePod answers, the app can check whether the one-time local setup is already done.";
+      ? `The local bridge is set to ${setup.connectionMode === "escape-pod" ? "Escape Pod" : "IP"} mode with ${setup.sttLanguage}.`
+      : "The app can apply the default local bridge setup for you: English (US) plus Escape Pod mode."
+    : "Once the local bridge answers, the app can check whether the one-time local setup is already done.";
   const pairingHint = setup?.needsRobotPairing
     ? "Vector still needs the one-time Bluetooth and Wi-Fi handshake. That part still happens through the local pairing portal, but the rest of the setup can stay here."
     : "If no robot shows up after local setup finishes, open the pairing portal once to complete the first-time robot handshake.";
@@ -37,7 +37,7 @@ export function StartupSetupCard({
       <CardHeader>
         <CardTitle>Setup inside the app</CardTitle>
         <CardDescription>
-          The dashboard can now handle the easy local WirePod defaults for you and only hands you off for the one robot-side pairing step.
+          The dashboard can now handle the easy local bridge defaults for you and only hands you off for the one robot-side pairing step.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">

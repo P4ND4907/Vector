@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { useEffect, useMemo, useState } from "react";
 
 interface BeforeInstallPromptEvent extends Event {
@@ -16,6 +17,17 @@ const isStandaloneDisplay = () => {
   );
 };
 
+const isLocalhost = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return (
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1"
+  );
+};
+
 const isIosSafariLike = () => {
   if (typeof window === "undefined") {
     return false;
@@ -31,8 +43,14 @@ const isIosSafariLike = () => {
 export const usePwaInstall = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(isStandaloneDisplay());
+  const [serviceWorkerReady, setServiceWorkerReady] = useState(false);
+  const isNativeShell = Capacitor.isNativePlatform();
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
     const handleBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
       setDeferredPrompt(event as BeforeInstallPromptEvent);
@@ -47,6 +65,25 @@ export const usePwaInstall = () => {
     const handleDisplayModeChange = () => {
       setIsInstalled(isStandaloneDisplay());
     };
+    const canUseServiceWorker = "serviceWorker" in navigator && !isNativeShell;
+
+    if (canUseServiceWorker) {
+      navigator.serviceWorker
+        .getRegistration("/sw.js")
+        .then((registration) => {
+          if (registration) {
+            setServiceWorkerReady(true);
+            return;
+          }
+
+          return navigator.serviceWorker.ready
+            .then(() => setServiceWorkerReady(true))
+            .catch(() => setServiceWorkerReady(false));
+        })
+        .catch(() => setServiceWorkerReady(false));
+    } else {
+      setServiceWorkerReady(false);
+    }
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
     window.addEventListener("appinstalled", handleAppInstalled);
@@ -57,10 +94,26 @@ export const usePwaInstall = () => {
       window.removeEventListener("appinstalled", handleAppInstalled);
       mediaQuery?.removeEventListener?.("change", handleDisplayModeChange);
     };
-  }, []);
+  }, [isNativeShell]);
 
   const canInstall = useMemo(() => !isInstalled && Boolean(deferredPrompt), [deferredPrompt, isInstalled]);
   const showIosHint = useMemo(() => !isInstalled && !deferredPrompt && isIosSafariLike(), [deferredPrompt, isInstalled]);
+  const supportsServiceWorker = useMemo(
+    () => typeof window !== "undefined" && "serviceWorker" in navigator && !isNativeShell,
+    [isNativeShell]
+  );
+  const isSecureContextLike = useMemo(
+    () => typeof window !== "undefined" && (window.isSecureContext || isLocalhost()),
+    []
+  );
+  const installUrl = useMemo(
+    () => (typeof window === "undefined" ? "" : window.location.href),
+    []
+  );
+  const canSelfInstall = useMemo(
+    () => !isNativeShell && supportsServiceWorker && isSecureContextLike,
+    [isNativeShell, isSecureContextLike, supportsServiceWorker]
+  );
 
   const promptInstall = async () => {
     if (!deferredPrompt) {
@@ -78,8 +131,14 @@ export const usePwaInstall = () => {
 
   return {
     canInstall,
+    canSelfInstall,
+    installUrl,
     isInstalled,
+    isNativeShell,
+    isSecureContextLike,
+    serviceWorkerReady,
     showIosHint,
-    promptInstall
+    promptInstall,
+    supportsServiceWorker
   };
 };

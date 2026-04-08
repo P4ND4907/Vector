@@ -1,16 +1,19 @@
 # Releasing Vector Control Hub
 
-This document covers the current Phase 1 Windows release path.
+This document covers the stable public Phase 1 Windows release path.
 
 ## What Phase 1 Produces
 
 - Windows installer (`.exe`)
 - Windows portable build (`.exe`)
 - GitHub Release artifacts for testers
+- a GitHub-friendly source path for advanced users
 
 The release still assumes:
 - Windows users
 - WirePod is installed separately for real robot control
+
+The Windows artifact version is taken from the root `package.json` version.
 
 ## Before You Release
 
@@ -25,6 +28,7 @@ The release still assumes:
 2. Confirm screenshots and README wording are current.
 3. Make sure no local env files are present in what you plan to share.
 4. Test `start-app.bat` once on your own machine.
+5. Confirm the root `package.json` version is the release version you want shown in the installer filenames.
 
 ## Local Windows Packaging
 
@@ -43,6 +47,11 @@ dist-electron/
 Expected outputs include:
 - NSIS installer
 - portable Windows executable
+
+The filenames look like:
+
+- `Vector-Control-Hub-Setup-X.Y.Z-x64.exe`
+- `Vector-Control-Hub-Portable-X.Y.Z-x64.exe`
 
 ## GitHub Actions Release Flow
 
@@ -94,4 +103,4 @@ Known limitations
 - Real robot control still depends on local WirePod
 - Code signing is not set up yet, so Windows SmartScreen may warn on first download
 
-That is okay for Phase 1. The goal right now is a trustworthy GitHub Release, not the final one-app experience.
+That is okay for Phase 1. The goal right now is a trustworthy public Windows product, not the final one-app experience.

@@ -1,69 +1,93 @@
 # Vector Control Hub Phases
 
-This project is being shipped in clear product phases so we can improve the real app without breaking trust.
+This project is now being tracked in three product phases.
 
-## Phase 1: GitHub Release + Windows Installer
+Current status:
 
-Goal:
-- make the project easy to try from GitHub
-- give people a normal Windows installer download
-- keep the current app working as-is
+- Phase 1 is complete
+- Phase 1 is the stable public Windows product
+- Phase 2 is complete as the strong mobile companion milestone
+- active development now focuses on the Phase 3 independence foundation while keeping Phases 1 and 2 stable
 
-What is included:
-- clean GitHub repo and public docs
-- Windows packaging scripts
-- GitHub Actions workflow to build release artifacts
-- manual and tagged release instructions
-- source-download path still available for advanced users
-
-What is not included yet:
-- in-app WirePod installation
-- one-click first-run setup for brand-new users
-- automatic app updates
-- full one-app experience
-
-## Phase 2: First-Run Onboarding
+## Phase 1: Stable Public Windows Product
 
 Goal:
-- make first launch calm and obvious for normal users
+
+- ship a trustworthy Windows release for normal users
+- keep setup, control, diagnostics, and recovery in one approachable app
+- make GitHub Releases the normal download path instead of raw source
+
+What Phase 1 includes:
+
+- Windows installer and portable builds
+- one-click Windows launcher
+- local backend startup handled by the app launcher
+- first-run onboarding for the current local backend model
+- diagnostics, repair tools, command handling, and Mock Mode
+- public docs, screenshots, and GitHub release workflow
+
+What Phase 1 still honestly depends on:
+
+- Windows as the main supported public platform
+- WirePod as the local backend bridge for real robot control
+- unsigned Windows builds unless code signing is added later
+
+Phase 1 exit criteria:
+
+- release builds are reproducible
+- docs and README match the real product
+- installer path is verified locally
+- known limitations are honest
+
+Status:
+
+- complete
+
+## Phase 2: Strong Mobile Companion
+
+Goal:
+
+- make the Android app feel automatic and dependable as a companion to the local desktop backend
 
 Target work:
-- setup wizard
-- clearer "real mode" vs "mock mode" explanation
-- better missing-dependency messaging
-- beginner-friendly connection steps inside the app
 
-## Phase 3: Managed WirePod Experience
+- stronger backend auto-discovery and reconnect behavior
+- Bluetooth discovery and pairing handoff improvements
+- better offline shell and recovery messaging
+- cleaner mobile setup flow for normal users
+- Play testing and real-device stability work as ongoing polish instead of a blocked milestone
 
-Goal:
-- keep WirePod mostly invisible during normal use
+Status:
 
-Target work:
-- detect WirePod automatically
-- start it from inside the app when possible
-- in-app repair and diagnostics for common failures
-- fewer reasons to touch the WirePod web UI
+- complete
 
-## Phase 4: Product Polish
+## Phase 3: True One-App Independence
 
 Goal:
-- make the app feel finished and reliable
+
+- move beyond the external local bridge so the app becomes the only thing most users think about
 
 Target work:
-- smoother startup
-- better screenshots and release notes
-- stronger offline and empty states
-- feedback flow and support bundle export
-- stable update path
 
-## Phase 5: One-App Experience
+- replace or embed the current WirePod dependency
+- own pairing, provisioning, and reconnect directly
+- support a true phone-only or self-contained setup path
+- reduce separate install steps to the minimum possible
 
-Goal:
-- move toward a true non-technical install experience
+What is already in place now:
 
-Target work:
-- reduce or remove separate dependency steps
-- evaluate bundling or replacing the local bridge
-- signed installer
-- auto-updates
-- the app becomes the only thing most users think about
+- a provider-agnostic local bridge service boundary in the backend
+- compatibility `/bridge/*` API routes that no longer hard-code WirePod in the public mobile path
+- integration metadata that can describe the active bridge provider without making the UI architecture-specific
+- ongoing UI cleanup so the app talks about a local bridge/provider instead of assuming one backend forever
+
+What still honestly remains before Phase 3 is complete:
+
+- a direct embedded robot transport that does not rely on the current WirePod-compatible implementation
+- full in-app pairing and provisioning with no portal handoff
+- a truly phone-only setup path for first-time owners
+- migration of remaining WirePod-specific internal settings and storage names
+
+Status:
+
+- in progress

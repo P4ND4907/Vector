@@ -101,7 +101,20 @@ export const createSettingsRouter = (controller: RobotController) => {
     });
   });
 
+  router.get("/bridge/weather", async (_request: Request, response: Response) => {
+    response.json({
+      weather: await controller.getWirePodWeatherConfig()
+    });
+  });
+
   router.post("/wirepod/weather", async (request: Request, response: Response) => {
+    const payload = wirePodWeatherSchema.parse(request.body ?? {});
+    response.json({
+      weather: await controller.setWirePodWeatherConfig(payload)
+    });
+  });
+
+  router.post("/bridge/weather", async (request: Request, response: Response) => {
     const payload = wirePodWeatherSchema.parse(request.body ?? {});
     response.json({
       weather: await controller.setWirePodWeatherConfig(payload)
@@ -114,7 +127,20 @@ export const createSettingsRouter = (controller: RobotController) => {
     });
   });
 
+  router.get("/bridge/setup", async (_request: Request, response: Response) => {
+    response.json({
+      setup: await controller.getWirePodSetupStatus()
+    });
+  });
+
   router.post("/wirepod/setup", async (request: Request, response: Response) => {
+    const payload = wirePodSetupSchema.parse(request.body ?? {});
+    response.json({
+      setup: await controller.finishWirePodSetup(payload)
+    });
+  });
+
+  router.post("/bridge/setup", async (request: Request, response: Response) => {
     const payload = wirePodSetupSchema.parse(request.body ?? {});
     response.json({
       setup: await controller.finishWirePodSetup(payload)

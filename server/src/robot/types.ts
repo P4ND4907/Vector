@@ -1,4 +1,5 @@
 export type RobotConnectionSource = "mock" | "wirepod";
+export type LocalBridgeProvider = "wirepod";
 export type MaybePromise<T> = T | Promise<T>;
 export type SystemStatus = "ready" | "charging" | "docked" | "busy" | "offline" | "error";
 export type LiveUpdateMode = "polling";
@@ -41,6 +42,15 @@ export interface FeatureFlagsRecord {
 export interface AiMemoryRecord {
   key: string;
   value: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LearnedCommandRecord {
+  phrase: string;
+  normalizedPhrase: string;
+  targetPrompt: string;
+  normalizedTargetPrompt: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -88,6 +98,8 @@ export interface WirePodProbeResult {
   error?: string;
 }
 
+export type LocalBridgeProbeResult = WirePodProbeResult;
+
 export type ManagedBridgeSource = "bundled" | "external" | "none";
 
 export interface ManagedBridgeStatusRecord {
@@ -106,7 +118,10 @@ export interface WirePodWeatherConfigRecord {
   unit?: string;
 }
 
+export type LocalBridgeWeatherConfigRecord = WirePodWeatherConfigRecord;
+
 export type WirePodConnectionMode = "escape-pod" | "ip" | "unknown";
+export type LocalBridgeConnectionMode = WirePodConnectionMode;
 
 export interface WirePodSetupStatusRecord {
   reachable: boolean;
@@ -119,6 +134,8 @@ export interface WirePodSetupStatusRecord {
   needsRobotPairing: boolean;
   recommendedNextStep: string;
 }
+
+export type LocalBridgeSetupStatusRecord = WirePodSetupStatusRecord;
 
 export interface RuntimeSettings {
   theme: ThemeMode;
@@ -142,6 +159,10 @@ export interface RobotIntegrationInfo {
   source: RobotConnectionSource;
   wirePodReachable: boolean;
   wirePodBaseUrl: string;
+  bridgeProvider?: LocalBridgeProvider;
+  bridgeLabel?: string;
+  bridgeReachable?: boolean;
+  bridgeBaseUrl?: string;
   managedBridge: ManagedBridgeStatusRecord;
   selectedSerial?: string;
   note?: string;
@@ -325,6 +346,27 @@ export interface VoiceDiagnosticsRecord {
   troubleshooting: string[];
 }
 
+export interface BridgeWatchdogStatusRecord {
+  observedAt: string;
+  overallStatus: "healthy" | "attention" | "critical";
+  issueCode:
+    | "mock-mode"
+    | "bridge-offline"
+    | "sdk-session-timeout"
+    | "robot-routes-quiet"
+    | "reconnect-loop"
+    | "stable";
+  summary: string;
+  recommendedAction: string;
+  bridgeReachable: boolean;
+  robotReachable: boolean;
+  autoRecoveryAvailable: boolean;
+  autoRecoveryLikelyHelpful: boolean;
+  connTimerEvents: number;
+  reconnectEvents: number;
+  recentEvidence: string[];
+}
+
 export interface RepairStepRecord {
   id: string;
   label: string;
@@ -367,6 +409,7 @@ export interface CommandGapRecord {
 export interface RobotController {
   getStatus: () => MaybePromise<RobotStatus>;
   getIntegrationInfo: () => MaybePromise<RobotIntegrationInfo>;
+  getBridgeWatchdogStatus: () => MaybePromise<BridgeWatchdogStatusRecord>;
   getSettings: () => MaybePromise<RuntimeSettings>;
   updateSettings: (patch: Partial<RuntimeSettings>) => MaybePromise<RuntimeSettings>;
   discoverRobots: () => MaybePromise<DiscoveredRobot[]>;
@@ -406,6 +449,14 @@ export interface RobotController {
   getSupportReports: () => MaybePromise<SupportReportRecord[]>;
   getAiMemory: () => MaybePromise<AiMemoryRecord[]>;
   saveAiMemory: (payload: { key: string; value: string }) => MaybePromise<AiMemoryRecord[]>;
+  getLearnedCommands: () => MaybePromise<LearnedCommandRecord[]>;
+  saveLearnedCommand: (payload: {
+    phrase: string;
+    targetPrompt: string;
+  }) => MaybePromise<LearnedCommandRecord>;
+  deleteLearnedCommand: (payload: {
+    phrase: string;
+  }) => MaybePromise<LearnedCommandRecord | undefined>;
   getCommandGaps: () => MaybePromise<CommandGapRecord[]>;
   recordCommandGap: (payload: {
     source: CommandGapRecord["source"];

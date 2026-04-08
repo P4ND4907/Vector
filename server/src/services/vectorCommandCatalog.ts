@@ -17,10 +17,10 @@ const commandCatalog: VectorCommandCatalogItemRecord[] = [
     category: "classic",
     status: "live",
     summary: "Checks the current weather and gives a quick on-robot cue before speaking the result.",
-    aliases: ["what's the weather", "weather", "what is the weather"],
+    aliases: ["what's the weather", "weather", "what is the weather", "forecast", "what's it like outside"],
     samplePrompt: "what's the weather",
     surfaces: ["face", "voice"],
-    note: "Wake-word weather still needs a configured provider key inside the app settings."
+    note: "Typed weather now falls back automatically. Wake-word weather still needs a configured provider key inside the app settings."
   },
   {
     key: "weather_tomorrow",
@@ -28,7 +28,7 @@ const commandCatalog: VectorCommandCatalogItemRecord[] = [
     category: "community",
     status: "live",
     summary: "Checks tomorrow's forecast, with optional location support through the shared assistant flow.",
-    aliases: ["what's the weather tomorrow", "weather tomorrow", "what is the weather tomorrow in Seattle"],
+    aliases: ["what's the weather tomorrow", "weather tomorrow", "tomorrow forecast", "what is the weather tomorrow in Seattle"],
     samplePrompt: "what's the weather tomorrow",
     surfaces: ["face", "voice"]
   },
@@ -38,7 +38,7 @@ const commandCatalog: VectorCommandCatalogItemRecord[] = [
     category: "classic",
     status: "live",
     summary: "Runs the stock time routine so Vector can answer like the classic app experience.",
-    aliases: ["what time is it", "current time", "tell me the time"],
+    aliases: ["what time is it", "current time", "tell me the time", "time now", "what's the time"],
     samplePrompt: "what time is it",
     surfaces: ["face", "voice"]
   },
@@ -58,7 +58,7 @@ const commandCatalog: VectorCommandCatalogItemRecord[] = [
     category: "control",
     status: "live",
     summary: "Reads battery, dock, and charging status through the local backend.",
-    aliases: ["battery", "battery status", "check battery", "status"],
+    aliases: ["battery", "battery status", "check battery", "status", "are you charging", "how much battery do you have"],
     samplePrompt: "check battery",
     surfaces: ["voice", "app"]
   },
@@ -68,7 +68,7 @@ const commandCatalog: VectorCommandCatalogItemRecord[] = [
     category: "control",
     status: "live",
     summary: "Sends Vector back to the charger with the same plain-English command path as voice and typed input.",
-    aliases: ["go dock", "go home", "return home", "return to charger"],
+    aliases: ["go dock", "go home", "return home", "return to charger", "return to base", "go to base"],
     samplePrompt: "go dock",
     surfaces: ["motion", "voice"]
   },
@@ -98,7 +98,7 @@ const commandCatalog: VectorCommandCatalogItemRecord[] = [
     category: "classic",
     status: "live",
     summary: "Adjusts speaker volume, mute, unmute, or max volume from the same shared command system.",
-    aliases: ["volume down", "volume up", "max volume", "be quiet", "unmute"],
+    aliases: ["volume down", "volume up", "max volume", "be quiet", "unmute", "mute yourself"],
     samplePrompt: "volume up",
     surfaces: ["voice", "app"]
   },
@@ -128,7 +128,7 @@ const commandCatalog: VectorCommandCatalogItemRecord[] = [
     category: "classic",
     status: "live",
     summary: "Starts, checks, and cancels local timers through the shared assistant flow.",
-    aliases: ["set a timer for 5 minutes", "check timer", "cancel timer"],
+    aliases: ["set a timer for 5 minutes", "check timer", "cancel timer", "time left", "clear timer"],
     samplePrompt: "set a timer for 5 minutes",
     surfaces: ["voice", "memory"]
   },
@@ -138,8 +138,28 @@ const commandCatalog: VectorCommandCatalogItemRecord[] = [
     category: "community",
     status: "live",
     summary: "Rolls a virtual die, triggers a quick game-like cue on the robot, and speaks the result.",
-    aliases: ["roll a die", "roll die", "roll dice"],
+    aliases: ["roll a die", "roll the die", "roll die", "roll dice", "roll the dice", "roll a d6"],
     samplePrompt: "roll a die",
+    surfaces: ["face", "voice"]
+  },
+  {
+    key: "flip_coin",
+    title: "Flip a coin",
+    category: "community",
+    status: "live",
+    summary: "Flips a virtual coin, triggers a quick game-style cue, and speaks heads or tails.",
+    aliases: ["flip a coin", "flip coin", "toss a coin", "coin flip", "heads or tails"],
+    samplePrompt: "flip a coin",
+    surfaces: ["face", "voice"]
+  },
+  {
+    key: "rock_paper_scissors",
+    title: "Rock paper scissors",
+    category: "community",
+    status: "live",
+    summary: "Starts a quick rock-paper-scissors style game cue and has Vector pick a move out loud.",
+    aliases: ["rock paper scissors", "play rock paper scissors", "lets play rock paper scissors", "rps"],
+    samplePrompt: "rock paper scissors",
     surfaces: ["face", "voice"]
   },
   {
@@ -148,7 +168,7 @@ const commandCatalog: VectorCommandCatalogItemRecord[] = [
     category: "control",
     status: "live",
     summary: "Runs diagnostics and speaks the local summary, with repair flows available elsewhere in the app.",
-    aliases: ["run diagnostics", "health check", "system diagnostics"],
+    aliases: ["run diagnostics", "health check", "system diagnostics", "quick repair", "repair voice", "scan for robots"],
     samplePrompt: "run diagnostics",
     surfaces: ["voice", "app"]
   },
@@ -163,14 +183,35 @@ const commandCatalog: VectorCommandCatalogItemRecord[] = [
     surfaces: ["face", "voice"]
   },
   {
+    key: "fun_personality",
+    title: "Snore, jokes, singing, and silliness",
+    category: "community",
+    status: "live",
+    summary: "Adds playful personality commands like snoring, laughing, singing, jokes, and silly routines, all through the same shared command engine.",
+    aliases: ["snore", "tell me a joke", "sing", "laugh", "be silly"],
+    samplePrompt: "snore",
+    surfaces: ["face", "voice", "memory"],
+    note: "These also work with the learned-phrase system, so you can teach custom trigger words for them."
+  },
+  {
     key: "exploration",
     title: "Roam and scan",
     category: "community",
     status: "live",
     summary: "Starts lightweight roaming or scan-style exploration commands from the same assistant page.",
-    aliases: ["scan around", "explore", "start exploring", "stop exploring"],
+    aliases: ["scan around", "explore", "start exploring", "stop exploring", "start patrol", "stop patrol"],
     samplePrompt: "scan around",
     surfaces: ["motion", "voice"]
+  },
+  {
+    key: "automation_voice",
+    title: "Automation voice control",
+    category: "control",
+    status: "live",
+    summary: "Starts, pauses, resumes, stops, and checks patrol automation from shared voice and typed commands.",
+    aliases: ["start patrol", "pause patrol", "resume patrol", "stop patrol", "automation status"],
+    samplePrompt: "start patrol",
+    surfaces: ["motion", "voice", "app"]
   },
   {
     key: "cube_fetch",

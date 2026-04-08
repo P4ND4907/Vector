@@ -125,10 +125,10 @@ export const getBrainStatusLabel = (
   }
 
   if (integration.managedBridge.source === "bundled" && integration.wirePodReachable) {
-    return "Built-in brain ready";
+    return "Built-in bridge ready";
   }
 
-  return integration.wirePodReachable ? "Local brain ready" : "Vector brain offline";
+  return integration.wirePodReachable ? "Local bridge ready" : "Local bridge offline";
 };
 
 export const notificationSurfaceTone: Record<NotificationLevel, string> = {

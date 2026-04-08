@@ -5,22 +5,27 @@ import {
   Bot,
   CheckCircle2,
   ChevronRight,
+  MoonStar,
   PlugZap,
   RefreshCw,
   Search,
   ShieldAlert,
   Smartphone,
   Sparkles,
+  SunMedium,
   Wifi
 } from "lucide-react";
+import { ConnectionDoctorCard } from "@/components/connection/ConnectionDoctorCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { buildConnectionDoctor, type ConnectionDoctorActionId } from "@/lib/connection-doctor";
+import { deriveAppHealthState, healthToneClassName } from "@/lib/health-state";
 import { StartupOverviewCard } from "@/components/startup/StartupOverviewCard";
 import { StartupSetupCard } from "@/components/startup/StartupSetupCard";
 import { formatRelativeTime } from "@/lib/format";
 import { getBatteryState, getBrainStatusLabel, getSystemStatusDisplay } from "@/lib/robot-state";
-import { getStoredAppBackendUrl, isMobileShellLikeRuntime } from "@/lib/runtime-target";
+import { getResolvedWirePodUrl, mobileRuntimeNeedsManualBackendUrl } from "@/lib/runtime-target";
 import { buildStartupGuide } from "@/lib/startup-onboarding";
 import { robotService } from "@/services/robotService";
 import { useAppStore } from "@/store/useAppStore";
@@ -45,6 +50,7 @@ export function StartupConnectPage() {
   const settings = useAppStore((state) => state.settings);
   const connectRobot = useAppStore((state) => state.connectRobot);
   const scanForRobots = useAppStore((state) => state.scanForRobots);
+  const wakeRobot = useAppStore((state) => state.wakeRobot);
   const updateSettings = useAppStore((state) => state.updateSettings);
   const quickRepair = useAppStore((state) => state.quickRepair);
   const connectState = useAppStore((state) => state.actionStates.connect);
@@ -57,6 +63,10 @@ export function StartupConnectPage() {
   const batteryState = getBatteryState(robot);
   const systemStatus = getSystemStatusDisplay(robot.systemStatus);
   const brainStatus = getBrainStatusLabel(integration);
+  const healthState = useMemo(
+    () => deriveAppHealthState({ robot, integration }),
+    [integration, robot]
+  );
   const savedTarget = savedProfiles[0];
   const isConnected = robot.isConnected && integration.robotReachable;
   const localBrainValue = integration.wirePodReachable
@@ -67,16 +77,28 @@ export function StartupConnectPage() {
   const localBrainDescription = integration.wirePodReachable
     ? integration.managedBridge.source === "bundled"
       ? "The app is using its built-in local bridge."
-      : "WirePod answered the backend."
+      : `${integration.bridgeLabel || "The local bridge"} answered the backend.`
     : integration.managedBridge.available
       ? "The built-in bridge is available and will be started automatically."
-      : "The app cannot reach WirePod yet.";
-  const mobileRuntimeNeedsBackend =
-    isMobileShellLikeRuntime() && getStoredAppBackendUrl().trim().length === 0;
+      : "The app cannot reach the local bridge yet.";
+  const mobileRuntimeNeedsBackend = mobileRuntimeNeedsManualBackendUrl();
 
   const guide = useMemo(
     () =>
       buildStartupGuide({
+        robot,
+        integration,
+        settings,
+        savedProfile: savedTarget,
+        availableRobots,
+        wirePodSetup,
+        mobileRuntimeNeedsBackend
+      }),
+    [availableRobots, integration, mobileRuntimeNeedsBackend, robot, savedTarget, settings, wirePodSetup]
+  );
+  const doctorGuide = useMemo(
+    () =>
+      buildConnectionDoctor({
         robot,
         integration,
         settings,
@@ -94,18 +116,33 @@ export function StartupConnectPage() {
     supportState.message ||
     connectState.message ||
     scanState.message ||
+    healthState.detail ||
     integration.note ||
     guide.nextDetail;
   const completedChecklistCount = guide.checklist.filter((item) => item.done).length;
   const setupTitle = wirePodSetup?.initialSetupComplete ? "Local setup is ready" : "Local setup still needs one pass";
   const setupDescription = wirePodSetup
     ? wirePodSetup.initialSetupComplete
-      ? `WirePod is set to ${wirePodSetup.connectionMode === "escape-pod" ? "Escape Pod" : "IP"} mode with ${wirePodSetup.sttLanguage}.`
+      ? `The local bridge is set to ${wirePodSetup.connectionMode === "escape-pod" ? "Escape Pod" : "IP"} mode with ${wirePodSetup.sttLanguage}.`
       : "The app can apply the default local setup for you: English (US) plus Escape Pod mode."
-    : "Once the local brain answers, the app can check whether the one-time setup is already done.";
-  const pairingHint = wirePodSetup?.needsRobotPairing
+    : "Once the local bridge answers, the app can check whether the one-time setup is already done.";
+  const pairingStillNeeded = Boolean(
+    wirePodSetup?.needsRobotPairing ||
+      (!(savedTarget || settings.robotSerial || integration.selectedSerial) &&
+        wirePodSetup?.initialSetupComplete &&
+        wirePodSetup.discoveredRobotCount === 0 &&
+        availableRobots.length === 0)
+  );
+  const bridgeRoutesUnresponsive =
+    integration.wirePodReachable &&
+    !integration.robotReachable &&
+    Boolean(integration.note?.toLowerCase().includes("routes are not responding"));
+  const pairingHint = pairingStillNeeded
     ? "Vector still needs the one-time Bluetooth and Wi-Fi handshake through the pairing portal."
-    : "If no robot appears after local setup, open the pairing portal once to finish the first-time handshake.";
+    : bridgeRoutesUnresponsive
+      ? "The local bridge already knows a robot, but its SDK routes are timing out. Retry connection or restart the desktop service before pairing again."
+      : "If no robot appears after local setup, open the pairing portal once to finish the first-time handshake.";
+  const pairingPageHref = doctorGuide.stage === "pairing-needed" ? "/pairing?intent=new-robot" : "/pairing";
 
   useEffect(() => {
     let cancelled = false;
@@ -158,10 +195,7 @@ export function StartupConnectPage() {
   };
 
   const handleOpenRobotPairingPortal = () => {
-    const baseUrl =
-      integration.wirePodBaseUrl && integration.wirePodBaseUrl.trim().length > 0
-        ? integration.wirePodBaseUrl
-        : "http://127.0.0.1:8080";
+    const baseUrl = getResolvedWirePodUrl(integration.wirePodBaseUrl);
     window.open(baseUrl, "_blank", "noopener,noreferrer");
   };
 
@@ -176,6 +210,17 @@ export function StartupConnectPage() {
       return;
     }
 
+    if (healthState.id === "bridge-down" || healthState.id === "sdk-flapping") {
+      await quickRepair();
+      return;
+    }
+
+    if (healthState.id === "robot-asleep") {
+      await wakeRobot();
+      await connectRobot();
+      return;
+    }
+
     await connectRobot();
   };
 
@@ -186,6 +231,43 @@ export function StartupConnectPage() {
 
   const handleDisableMock = async () => {
     await updateSettings({ mockMode: false });
+  };
+
+  const handleDoctorAction = async (actionId: ConnectionDoctorActionId) => {
+    switch (actionId) {
+      case "open-dashboard":
+        navigate("/dashboard");
+        return;
+      case "open-settings":
+        navigate("/settings");
+        return;
+      case "retry-connection":
+        await connectRobot();
+        return;
+      case "run-quick-repair":
+        await quickRepair();
+        return;
+      case "run-diagnostics":
+        navigate("/diagnostics");
+        return;
+      case "open-pairing":
+        navigate(pairingPageHref);
+        return;
+      case "open-new-robot":
+        navigate("/setup/new-robot");
+        return;
+      case "disable-mock":
+        await handleDisableMock();
+        return;
+      case "scan-network":
+        await scanForRobots();
+        return;
+      case "finish-local-setup":
+        await handleFinishLocalSetup();
+        return;
+      default:
+        return;
+    }
   };
 
   return (
@@ -202,10 +284,36 @@ export function StartupConnectPage() {
             </div>
 
             <div className="flex flex-wrap gap-2">
+              <Badge className={healthToneClassName[healthState.tone]}>{healthState.badgeLabel}</Badge>
               <Badge>{systemStatus.label}</Badge>
               <Badge className={batteryState.badgeClassName}>{batteryState.label}</Badge>
               <Badge>{brainStatus}</Badge>
               <Badge>{integration.selectedSerial || robot.serial || "No serial saved"}</Badge>
+            </div>
+
+            <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-4">
+              <div className="text-sm font-semibold">Interface mode</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Pick dark or light while you finish setup.
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <Button
+                  variant={settings.theme === "dark" ? "default" : "outline"}
+                  className="justify-start"
+                  onClick={() => void updateSettings({ theme: "dark" })}
+                >
+                  <MoonStar className="h-4 w-4" />
+                  Dark mode
+                </Button>
+                <Button
+                  variant={settings.theme === "light" ? "default" : "outline"}
+                  className="justify-start"
+                  onClick={() => void updateSettings({ theme: "light" })}
+                >
+                  <SunMedium className="h-4 w-4" />
+                  Light mode
+                </Button>
+              </div>
             </div>
 
             <div className={`rounded-3xl border p-4 ${stageSurfaceTone[guide.stage]}`}>
@@ -217,9 +325,11 @@ export function StartupConnectPage() {
               <p className="mt-2 text-sm text-muted-foreground">{statusMessage}</p>
             </div>
 
+            <ConnectionDoctorCard guide={doctorGuide} onAction={handleDoctorAction} compact />
+
             <div className="grid gap-3 md:grid-cols-3">
               <StartupOverviewCard
-                title="Local brain"
+                title="Local bridge"
                 icon={<PlugZap className="h-4 w-4 text-primary" />}
                 value={localBrainValue}
                 description={localBrainDescription}
@@ -229,7 +339,7 @@ export function StartupConnectPage() {
                 title="Saved target"
                 icon={<Bot className="h-4 w-4 text-primary" />}
                 value={integration.selectedSerial || settings.robotSerial || "Not set"}
-                description={savedTarget ? `${savedTarget.name} is ready to reconnect.` : "Save a robot once so launch stays simple."}
+                description={savedTarget ? `${savedTarget.name} is ready to reconnect.` : "Save one robot once and future launches stay simpler."}
               />
 
               <StartupOverviewCard
@@ -258,6 +368,10 @@ export function StartupConnectPage() {
                     <Smartphone className="h-4 w-4" />
                     Set backend URL
                   </Button>
+                  <Button variant="outline" size="lg" onClick={() => navigate("/setup/new-robot")}>
+                    <Bot className="h-4 w-4" />
+                    Guided new robot setup
+                  </Button>
                   {guide.showDemoOption ? (
                     <Button variant="ghost" size="lg" onClick={handleEnableMock}>
                       <Sparkles className="h-4 w-4" />
@@ -267,31 +381,64 @@ export function StartupConnectPage() {
                 </>
               ) : (
                 <>
-                  <Button size="lg" onClick={handlePrimary} disabled={connectState.status === "loading"}>
-                    {isConnected ? <ArrowRight className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
-                    {isConnected ? "Open dashboard" : connectState.status === "loading" ? "Connecting..." : "Connect to Vector"}
+                  <Button
+                    size="lg"
+                    onClick={handlePrimary}
+                    disabled={
+                      connectState.status === "loading" ||
+                      ((healthState.id === "bridge-down" || healthState.id === "sdk-flapping") &&
+                        supportState.status === "loading")
+                    }
+                  >
+                    {isConnected ? (
+                      <ArrowRight className="h-4 w-4" />
+                    ) : healthState.id === "bridge-down" || healthState.id === "sdk-flapping" ? (
+                      <ShieldAlert className="h-4 w-4" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    {isConnected
+                      ? "Open dashboard"
+                      : healthState.id === "bridge-down" || healthState.id === "sdk-flapping"
+                        ? supportState.status === "loading"
+                          ? "Auto-recovering..."
+                          : "Auto-recover bridge"
+                        : healthState.id === "robot-asleep"
+                          ? "Wake and reconnect"
+                          : connectState.status === "loading"
+                            ? "Connecting..."
+                            : "Connect to Vector"}
                   </Button>
                   <Button variant="outline" size="lg" onClick={() => void scanForRobots()} disabled={scanState.status === "loading"}>
                     <Search className="h-4 w-4" />
                     {scanState.status === "loading" ? "Scanning..." : "Scan network"}
                   </Button>
-                  {guide.showQuickRepair ? (
-                    <Button variant="outline" size="lg" onClick={quickRepair} disabled={supportState.status === "loading"}>
-                      <ShieldAlert className="h-4 w-4" />
-                      {supportState.status === "loading" ? "Trying quick repair..." : "Quick repair"}
-                    </Button>
-                  ) : null}
-                  {guide.showDemoOption ? (
-                    <Button variant="ghost" size="lg" onClick={handleEnableMock}>
-                      <Sparkles className="h-4 w-4" />
-                      Try demo mode
-                    </Button>
-                  ) : null}
-                  <Link to="/pairing">
-                    <Button variant="ghost" size="lg">
-                      Pair or switch robot
-                    </Button>
-                  </Link>
+                  <Button variant="outline" size="lg" onClick={() => navigate("/setup/new-robot")}>
+                    <Bot className="h-4 w-4" />
+                    Guided new robot setup
+                  </Button>
+                  <details className="min-w-[220px] rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-muted-foreground">
+                    <summary className="cursor-pointer list-none font-semibold text-foreground">More setup tools</summary>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {guide.showQuickRepair && healthState.id !== "bridge-down" && healthState.id !== "sdk-flapping" ? (
+                        <Button variant="ghost" size="lg" onClick={quickRepair} disabled={supportState.status === "loading"}>
+                          <ShieldAlert className="h-4 w-4" />
+                          {supportState.status === "loading" ? "Trying quick repair..." : "Quick repair"}
+                        </Button>
+                      ) : null}
+                      <Link to={pairingPageHref}>
+                        <Button variant="ghost" size="lg">
+                          Pair or switch robot
+                        </Button>
+                      </Link>
+                      {guide.showDemoOption ? (
+                        <Button variant="ghost" size="lg" onClick={handleEnableMock}>
+                          <Sparkles className="h-4 w-4" />
+                          Try demo mode
+                        </Button>
+                      ) : null}
+                    </div>
+                  </details>
                 </>
               )}
             </div>
@@ -474,7 +621,7 @@ export function StartupConnectPage() {
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
                 <div className="text-sm font-semibold">Real robot mode</div>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Use this when you want the app to control your actual Vector through the local WirePod bridge.
+                  Use this when you want the app to control your actual Vector through the local bridge.
                 </p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">

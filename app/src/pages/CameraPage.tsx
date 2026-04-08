@@ -42,7 +42,7 @@ export function CameraPage() {
           <div className="eyebrow">Camera and photos</div>
           <CardTitle>See the photos Vector takes and keep the library stored locally.</CardTitle>
           <CardDescription>
-            When WirePod is live, this screen automatically checks for the latest saved robot photos and keeps a local
+            When the local bridge is live, this screen automatically checks for the latest saved robot photos and keeps a local
             copy ready to review.
           </CardDescription>
         </CardHeader>
@@ -91,7 +91,7 @@ export function CameraPage() {
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-muted-foreground">
             {integration.source === "wirepod" && !integration.mockMode ? (
-              <p>WirePod exposes Vector&apos;s saved photo library here. This page now checks automatically when you open it, and <span className="font-semibold text-foreground">Retrieve latest photo</span> is there if you want to manually refresh the saved library.</p>
+              <p>The local bridge exposes Vector&apos;s saved photo library here. This page now checks automatically when you open it, and <span className="font-semibold text-foreground">Retrieve latest photo</span> is there if you want to manually refresh the saved library.</p>
             ) : (
               <p>Mock mode is active, so camera captures are simulated locally for layout and storage testing.</p>
             )}

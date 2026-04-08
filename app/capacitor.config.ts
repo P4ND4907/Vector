@@ -7,6 +7,16 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: "https",
     cleartext: true
+  },
+  plugins: {
+    BluetoothLe: {
+      displayStrings: {
+        scanning: "Scanning for nearby Bluetooth devices...",
+        cancel: "Cancel",
+        availableDevices: "Nearby Bluetooth devices",
+        noDeviceFound: "No Bluetooth devices found"
+      }
+    }
   }
 };
 

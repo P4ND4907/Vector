@@ -5,7 +5,9 @@ import type {
   AnimationItem,
   AutomationControl,
   AppSnapshot,
+  BridgeWatchdogStatus,
   CameraSnapshot,
+  CommandGap,
   DiagnosticCheck,
   DiagnosticReport,
   DiagnosticsSnapshot,
@@ -15,7 +17,9 @@ import type {
   RobotCommandResult,
   RobotProfile,
   RoamSession,
-  Routine
+  Routine,
+  SupportBundle,
+  VoiceDiagnostics
 } from "@/types";
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -28,6 +32,38 @@ const maybeFail = async (chance = 0.08) => {
 };
 
 const clone = <T,>(value: T) => JSON.parse(JSON.stringify(value)) as T;
+
+const createMockVoiceDiagnostics = (snapshot: AppSnapshot): VoiceDiagnostics => ({
+  wakeWordMode: "hey-vector",
+  locale: "en-US",
+  volume: snapshot.robot.volume,
+  lastIntent: snapshot.aiCommandHistory[0]?.summary,
+  lastTranscription: snapshot.aiCommandHistory[0]?.prompt,
+  lastHeardAt: snapshot.aiCommandHistory[0]?.createdAt,
+  status: "attention",
+  summary: "Mock voice diagnostics are simulated locally.",
+  troubleshooting: [
+    "Mock mode is active, so wake-word diagnostics are not coming from a live robot.",
+    "Turn mock mode off and connect to WirePod to capture real microphone and intent details."
+  ]
+});
+
+const createMockCommandGaps = (): CommandGap[] => [];
+
+const createMockBridgeWatchdog = (): BridgeWatchdogStatus => ({
+  observedAt: new Date().toISOString(),
+  overallStatus: "healthy",
+  issueCode: "mock-mode",
+  summary: "Mock mode is active, so the live bridge watchdog is paused.",
+  recommendedAction: "Turn mock mode off when you want to watch the real bridge and robot routes.",
+  bridgeReachable: false,
+  robotReachable: true,
+  autoRecoveryAvailable: false,
+  autoRecoveryLikelyHelpful: false,
+  connTimerEvents: 0,
+  reconnectEvents: 0,
+  recentEvidence: ["Mock mode is active."]
+});
 
 export const mockRobotService = {
   async bootstrap(): Promise<AppSnapshot> {
@@ -391,7 +427,27 @@ export const mockRobotService = {
       troubleshooting: [
         "Mock mode is active, so diagnostics and controls are simulated locally.",
         "Turn mock mode off and make sure WirePod is running to test the live path."
-      ]
+      ],
+      bridgeWatchdog: createMockBridgeWatchdog()
+    };
+  },
+
+  async getBridgeWatchdog(_snapshot: AppSnapshot): Promise<BridgeWatchdogStatus> {
+    await wait(90);
+    return createMockBridgeWatchdog();
+  },
+
+  async getSupportBundle(snapshot: AppSnapshot): Promise<SupportBundle> {
+    await wait(180);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      diagnosticsSnapshot: await mockRobotService.getDiagnosticsSnapshot(snapshot),
+      voiceDiagnostics: createMockVoiceDiagnostics(snapshot),
+      supportReports: clone(snapshot.supportReports),
+      commandGaps: createMockCommandGaps(),
+      settings: clone(snapshot.settings),
+      bridgeWatchdog: createMockBridgeWatchdog()
     };
   },
 

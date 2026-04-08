@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Activity,
   AlertTriangle,
@@ -13,15 +14,20 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { BridgeWatchdogCard } from "@/components/connection/BridgeWatchdogCard";
+import { ConnectionDoctorCard } from "@/components/connection/ConnectionDoctorCard";
+import { buildConnectionDoctor, type ConnectionDoctorActionId } from "@/lib/connection-doctor";
 import { formatRelativeTime, formatTimestamp } from "@/lib/format";
+import { deriveAppHealthState, healthToneClassName } from "@/lib/health-state";
 import {
   getBatteryState,
   getBrainStatusLabel,
   getSystemStatusDisplay,
   logStatusTone
 } from "@/lib/robot-state";
+import { robotService } from "@/services/robotService";
 import { useAppStore } from "@/store/useAppStore";
-import type { DiagnosticCheckStatus, DiagnosticOverallStatus } from "@/types";
+import type { BridgeWatchdogStatus, DiagnosticCheckStatus, DiagnosticOverallStatus } from "@/types";
 
 const overallTone: Record<DiagnosticOverallStatus, string> = {
   healthy: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
@@ -42,11 +48,15 @@ const repairStepTone: Record<"success" | "warn" | "fail", string> = {
 };
 
 export function DiagnosticsPage() {
+  const navigate = useNavigate();
   const robot = useAppStore((state) => state.robot);
   const integration = useAppStore((state) => state.integration);
   const logs = useAppStore((state) => state.logs);
   const diagnosticReports = useAppStore((state) => state.diagnosticReports);
   const supportReports = useAppStore((state) => state.supportReports);
+  const settings = useAppStore((state) => state.settings);
+  const savedProfiles = useAppStore((state) => state.savedProfiles);
+  const availableRobots = useAppStore((state) => state.availableRobots);
   const diagnosticsState = useAppStore((state) => state.actionStates.diagnostics);
   const voiceState = useAppStore((state) => state.actionStates.voice);
   const supportState = useAppStore((state) => state.actionStates.support);
@@ -55,6 +65,10 @@ export function DiagnosticsPage() {
   const quickRepair = useAppStore((state) => state.quickRepair);
   const repairVoiceSetup = useAppStore((state) => state.repairVoiceSetup);
   const wakeRobot = useAppStore((state) => state.wakeRobot);
+  const scanForRobots = useAppStore((state) => state.scanForRobots);
+  const updateSettings = useAppStore((state) => state.updateSettings);
+  const [watchdog, setWatchdog] = useState<BridgeWatchdogStatus | undefined>(undefined);
+  const [watchdogLoading, setWatchdogLoading] = useState(true);
 
   const latestReport = diagnosticReports[0];
   const latestSupportReport = supportReports[0];
@@ -63,6 +77,21 @@ export function DiagnosticsPage() {
   const batteryState = getBatteryState(robot);
   const systemStatus = getSystemStatusDisplay(robot.systemStatus);
   const brainStatus = getBrainStatusLabel(integration);
+  const healthState = useMemo(
+    () => deriveAppHealthState({ robot, integration, watchdog }),
+    [integration, robot, watchdog]
+  );
+  const doctorGuide = useMemo(
+    () =>
+      buildConnectionDoctor({
+        robot,
+        integration,
+        settings,
+        savedProfile: savedProfiles[0],
+        availableRobots
+      }),
+    [availableRobots, integration, robot, savedProfiles, settings]
+  );
   const overallStatus: DiagnosticOverallStatus =
     latestReport?.overallStatus ??
     (integration.robotReachable ? "healthy" : integration.wirePodReachable ? "attention" : "critical");
@@ -75,9 +104,9 @@ export function DiagnosticsPage() {
     }
 
     if (!integration.wirePodReachable) {
-      items.add("The app cannot reach WirePod right now.");
+      items.add("The app cannot reach the local bridge right now.");
     } else if (!integration.robotReachable) {
-      items.add("WirePod is awake, but Vector is not answering local status checks yet.");
+      items.add("The local bridge is awake, but Vector is not answering local status checks yet.");
     }
 
     latestReport?.troubleshooting?.forEach((item) => items.add(item));
@@ -101,19 +130,27 @@ export function DiagnosticsPage() {
   const pipelineCheck = voiceChecks.find((check) => check.label === "Voice pipeline");
 
   const recoverySteps = useMemo(() => {
-    if (!integration.wirePodReachable) {
+    if (healthState.id === "bridge-down") {
       return [
-        "Make sure WirePod is still running on this computer.",
-        "Press Retry connection once the local brain is back online.",
-        "Use the advanced connection details below if you need endpoint probe results."
+        "Auto-recover the local bridge first.",
+        "Wait for the bridge probes to go healthy again.",
+        "Open advanced connection details if the bridge still stays dark."
       ];
     }
 
-    if (!integration.robotReachable) {
+    if (healthState.id === "sdk-flapping") {
+      return [
+        "Run the watchdog recovery path to settle the SDK session.",
+        "Keep Vector on stable power while the session refreshes.",
+        "If flapping keeps returning, use the recent watchdog evidence below."
+      ];
+    }
+
+    if (healthState.id === "robot-asleep") {
       return [
         "Place Vector on the charger so the robot wakes on stable power.",
-        "Press Retry connection to refresh the live robot link.",
-        "If Vector still does not answer, send a wake signal and try again."
+        "Use Wake and reconnect to refresh the live robot link.",
+        "If Vector still does not answer, run diagnostics again."
       ];
     }
 
@@ -122,11 +159,112 @@ export function DiagnosticsPage() {
       "Run diagnostics before changing settings or reporting a bug.",
       "Use the latest report on the right to spot any early warning signs."
     ];
-  }, [integration]);
+  }, [healthState.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadWatchdog = async () => {
+      setWatchdogLoading(true);
+      try {
+        const nextWatchdog = await robotService.getBridgeWatchdog(useAppStore.getState());
+        if (!cancelled) {
+          setWatchdog(nextWatchdog);
+        }
+      } catch {
+        if (!cancelled) {
+          setWatchdog(undefined);
+        }
+      } finally {
+        if (!cancelled) {
+          setWatchdogLoading(false);
+        }
+      }
+    };
+
+    void loadWatchdog();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    integration.lastCheckedAt,
+    integration.robotReachable,
+    integration.wirePodReachable,
+    diagnosticsState.status,
+    supportState.status
+  ]);
+
+  const primaryAction =
+    healthState.id === "ready"
+      ? {
+          label: diagnosticsState.status === "loading" ? "Running diagnostics..." : "Run diagnostics",
+          run: async () => {
+            await runDiagnostics();
+          }
+        }
+      : healthState.id === "robot-asleep"
+        ? {
+            label: "Wake and reconnect",
+            run: async () => {
+              await wakeRobot();
+              await connectRobot();
+            }
+          }
+        : {
+            label: supportState.status === "loading" ? "Auto-recovering..." : "Auto-recover bridge",
+            run: async () => {
+              await quickRepair();
+            }
+          };
+
+  const handleDoctorAction = async (actionId: ConnectionDoctorActionId) => {
+    switch (actionId) {
+      case "open-dashboard":
+        navigate("/dashboard");
+        return;
+      case "open-settings":
+        navigate("/settings");
+        return;
+      case "retry-connection":
+        await connectRobot();
+        return;
+      case "run-quick-repair":
+        await quickRepair();
+        return;
+      case "run-diagnostics":
+        await runDiagnostics();
+        return;
+      case "open-pairing":
+        navigate("/pairing");
+        return;
+      case "open-new-robot":
+        navigate("/setup/new-robot");
+        return;
+      case "disable-mock":
+        await updateSettings({ mockMode: false });
+        return;
+      case "scan-network":
+        await scanForRobots();
+        return;
+      case "finish-local-setup":
+        navigate("/startup");
+        return;
+      default:
+        return;
+    }
+  };
 
   return (
     <div className="grid gap-4 xl:grid-cols-[1.02fr_0.98fr]">
       <div className="grid gap-4">
+        <ConnectionDoctorCard guide={doctorGuide} onAction={handleDoctorAction} />
+        <BridgeWatchdogCard
+          watchdog={watchdog}
+          loading={watchdogLoading}
+          onRecover={() => void quickRepair()}
+          onRetry={() => void connectRobot()}
+        />
+
         <Card>
           <CardHeader>
             <div className="eyebrow">Health check</div>
@@ -140,6 +278,7 @@ export function DiagnosticsPage() {
               <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
                 <div className="text-sm text-muted-foreground">Overall state</div>
                 <div className="mt-2 flex flex-wrap gap-2">
+                  <Badge className={healthToneClassName[healthState.tone]}>{healthState.badgeLabel}</Badge>
                   <Badge className={overallTone[overallStatus]}>{overallStatus}</Badge>
                   <Badge>{systemStatus.label}</Badge>
                 </div>
@@ -149,11 +288,11 @@ export function DiagnosticsPage() {
               <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
                 <div className="flex items-center gap-2 text-sm font-semibold">
                   <PlugZap className="h-4 w-4 text-primary" />
-                  Local brain
+                  Local bridge
                 </div>
                 <div className="mt-2 text-lg font-semibold">{brainStatus}</div>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  {integration.wirePodReachable ? "WirePod is answering the app backend." : "The app cannot reach WirePod right now."}
+                  {integration.wirePodReachable ? "The local bridge is answering the app backend." : "The app cannot reach the local bridge right now."}
                 </p>
               </div>
 
@@ -189,21 +328,28 @@ export function DiagnosticsPage() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button onClick={runDiagnostics} disabled={diagnosticsState.status === "loading"}>
-                <Activity className="h-4 w-4" />
-                {diagnosticsState.status === "loading" ? "Running diagnostics..." : "Run diagnostics"}
-              </Button>
-              <Button variant="outline" onClick={quickRepair} disabled={supportState.status === "loading"}>
+              <Button onClick={() => void primaryAction.run()} disabled={diagnosticsState.status === "loading" || supportState.status === "loading"}>
                 <ShieldCheck className="h-4 w-4" />
-                {supportState.status === "loading" ? "Trying quick repair..." : "Quick repair"}
+                {primaryAction.label}
               </Button>
-              <Button variant="outline" onClick={connectRobot}>
-                <RefreshCw className="h-4 w-4" />
-                Retry connection
-              </Button>
-              <Button variant="outline" onClick={wakeRobot}>
-                Send wake signal
-              </Button>
+              {healthState.id !== "ready" ? (
+                <Button variant="outline" onClick={runDiagnostics} disabled={diagnosticsState.status === "loading"}>
+                  <Activity className="h-4 w-4" />
+                  Run diagnostics
+                </Button>
+              ) : null}
+              {healthState.id !== "sdk-flapping" && healthState.id !== "bridge-down" ? (
+                <Button variant="outline" onClick={quickRepair} disabled={supportState.status === "loading"}>
+                  <RefreshCw className="h-4 w-4" />
+                  Quick repair
+                </Button>
+              ) : null}
+              {healthState.id !== "robot-asleep" ? (
+                <Button variant="outline" onClick={connectRobot}>
+                  <RefreshCw className="h-4 w-4" />
+                  Retry connection
+                </Button>
+              ) : null}
             </div>
 
             <p className="text-sm text-muted-foreground">
@@ -263,7 +409,7 @@ export function DiagnosticsPage() {
           <CardHeader>
             <CardTitle>Voice and wake word</CardTitle>
             <CardDescription>
-              Keep Hey Vector reliable without opening the WirePod UI.
+              Keep Hey Vector reliable without opening the bridge UI.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -273,7 +419,7 @@ export function DiagnosticsPage() {
                 {pipelineCheck?.details || "Run diagnostics to inspect the current Hey Vector path."}
               </div>
               <p className="mt-2 text-sm text-muted-foreground">
-                The refresh action re-applies the voice defaults WirePod exposes: Hey Vector button mode, English (US), and a safe speaker volume.
+                The refresh action re-applies the voice defaults the local bridge exposes: Hey Vector button mode, English (US), and a safe speaker volume.
               </p>
             </div>
 

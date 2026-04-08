@@ -37,8 +37,8 @@ export function SpeechPage() {
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge>{integration.mockMode ? "Mock mode" : "WirePod live path"}</Badge>
-            <Badge>{robot.isConnected ? "Robot online" : "Vector brain offline"}</Badge>
+            <Badge>{integration.mockMode ? "Mock mode" : "Local bridge live path"}</Badge>
+            <Badge>{robot.isConnected ? "Robot online" : "Local bridge offline"}</Badge>
             <Badge>{robot.volume}/5 volume</Badge>
           </div>
 
@@ -79,7 +79,7 @@ export function SpeechPage() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm font-semibold">Volume</div>
-                <div className="text-xs text-muted-foreground">Stored locally and sent through WirePod when it changes.</div>
+                <div className="text-xs text-muted-foreground">Stored locally and sent through the local bridge when it changes.</div>
               </div>
               <div className="text-xl font-semibold">{robot.volume}/5</div>
             </div>

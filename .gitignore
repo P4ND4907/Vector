@@ -23,4 +23,9 @@ app/android/keystore.properties
 app/android/*.jks
 app/android/*.keystore
 mobile-live-builds
+mobile-builds
 play-store-assets
+play-store-assets.zip
+artifacts
+tmp
+base

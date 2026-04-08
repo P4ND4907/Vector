@@ -3,6 +3,7 @@ import { Capacitor } from "@capacitor/core";
 const APP_BACKEND_URL_STORAGE_KEY = "vector-control-hub-api-base-url";
 const STORE_STORAGE_KEY = "vector-control-hub-store";
 const DEFAULT_BACKEND_PORT = 8787;
+const DEFAULT_WIREPOD_PORT = 8080;
 const MOBILE_LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
 const isNativeCapacitorRuntime = () => {
@@ -104,6 +105,32 @@ export const getResolvedAppBackendUrl = () =>
   import.meta.env.VITE_API_BASE_URL?.trim() ||
   getStoredAppBackendUrl() ||
   getDefaultAppBackendUrl();
+
+export const getResolvedWirePodUrl = (wirePodBaseUrl?: string) => {
+  const fallbackWirePodUrl = (wirePodBaseUrl || `http://127.0.0.1:${DEFAULT_WIREPOD_PORT}`).trim();
+
+  try {
+    const parsedWirePodUrl = new URL(fallbackWirePodUrl);
+    if (!isNativeCapacitorRuntime() || !MOBILE_LOOPBACK_HOSTS.has(parsedWirePodUrl.hostname)) {
+      return parsedWirePodUrl.toString().replace(/\/$/, "");
+    }
+
+    const resolvedAppBackendUrl = getResolvedAppBackendUrl().trim();
+    if (!resolvedAppBackendUrl) {
+      return parsedWirePodUrl.toString().replace(/\/$/, "");
+    }
+
+    const parsedAppBackendUrl = new URL(resolvedAppBackendUrl);
+    parsedAppBackendUrl.port = parsedWirePodUrl.port || String(DEFAULT_WIREPOD_PORT);
+    parsedAppBackendUrl.pathname = "";
+    parsedAppBackendUrl.search = "";
+    parsedAppBackendUrl.hash = "";
+
+    return parsedAppBackendUrl.toString().replace(/\/$/, "");
+  } catch {
+    return fallbackWirePodUrl.replace(/\/$/, "");
+  }
+};
 
 export const isMobileShellLikeRuntime = () => {
   if (typeof window === "undefined") {

@@ -13,24 +13,26 @@ export interface DiagnosticsSnapshot {
   logs: CommandLogRecord[];
   robot: RobotStatus;
   troubleshooting: string[];
+  bridgeWatchdog: Awaited<ReturnType<RobotController["getBridgeWatchdogStatus"]>>;
 }
 
 export const buildDiagnosticsSnapshot = async (
   controller: RobotController
 ): Promise<DiagnosticsSnapshot> => {
   const robot = await controller.getStatus();
-  const [integration, logs] = await Promise.all([
+  const [integration, logs, bridgeWatchdog] = await Promise.all([
     controller.getIntegrationInfo(),
-    controller.getLogs()
+    controller.getLogs(),
+    controller.getBridgeWatchdogStatus()
   ]);
 
   const latestSuccessfulCommand = logs.find((log) => log.status === "success");
   const latestFailedCommand = logs.find((log) => log.status === "error");
   const troubleshooting = [
     integration.note,
-    !integration.wirePodReachable ? "Vector brain offline. Make sure WirePod is running locally." : "",
+    !integration.wirePodReachable ? "Local bridge offline. Make sure the desktop service is running locally." : "",
     integration.wirePodReachable && !integration.robotReachable
-      ? "WirePod is reachable, but Vector is not responding on local Wi-Fi yet."
+      ? "The local bridge is reachable, but Vector is not responding on local Wi-Fi yet."
       : ""
   ].filter(Boolean) as string[];
 
@@ -40,7 +42,8 @@ export const buildDiagnosticsSnapshot = async (
     latestSuccessfulCommand,
     latestFailedCommand,
     logs,
-    troubleshooting
+    troubleshooting,
+    bridgeWatchdog
   };
 };
 

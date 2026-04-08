@@ -2,7 +2,8 @@ import { Suspense, lazy, useMemo } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { AdSenseBanner } from "@/components/ads/AdSenseBanner";
 import { DesktopSidebarPanels, PinnedStatusCard, ToastRail } from "@/components/layout/app-shell-chrome";
-import { DesktopNav, MobileNav } from "@/components/layout/app-shell-nav";
+import { DesktopNav, MobileNav, MobilePageHeader } from "@/components/layout/app-shell-nav";
+import { StartupEntryPage } from "@/pages/StartupEntryPage";
 import { StartupConnectPage } from "@/pages/StartupConnectPage";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -12,11 +13,17 @@ const DashboardPage = lazy(() =>
 const PairingPage = lazy(() =>
   import("@/pages/PairingPage").then((module) => ({ default: module.PairingPage }))
 );
+const NewRobotSetupPage = lazy(() =>
+  import("@/pages/NewRobotSetupPage").then((module) => ({ default: module.NewRobotSetupPage }))
+);
 const DrivePage = lazy(() =>
   import("@/pages/DrivePage").then((module) => ({ default: module.DrivePage }))
 );
 const AiCommandsPage = lazy(() =>
   import("@/pages/AiCommandsPage").then((module) => ({ default: module.AiCommandsPage }))
+);
+const MonetizationPage = lazy(() =>
+  import("@/pages/MonetizationPage").then((module) => ({ default: module.MonetizationPage }))
 );
 const SpeechPage = lazy(() =>
   import("@/pages/SpeechPage").then((module) => ({ default: module.SpeechPage }))
@@ -59,7 +66,8 @@ export function AppShell() {
   const dismissToast = useAppStore((state) => state.dismissToast);
   const notifications = useAppStore((state) => state.notifications);
   const logs = useAppStore((state) => state.logs);
-  const isStartupRoute = location.pathname === "/" || location.pathname === "/startup";
+  const isStartupRoute =
+    location.pathname === "/" || location.pathname === "/startup" || location.pathname === "/setup/new-robot";
 
   const unreadNotifications = useMemo(
     () => notifications.filter((notification) => !notification.read),
@@ -72,8 +80,9 @@ export function AppShell() {
       <div className="min-h-screen px-4 pb-8 pt-4 md:px-6">
         <Suspense fallback={<PageFallback />}>
           <Routes>
-            <Route path="/" element={<StartupConnectPage />} />
+            <Route path="/" element={<StartupEntryPage />} />
             <Route path="/startup" element={<StartupConnectPage />} />
+            <Route path="/setup/new-robot" element={<NewRobotSetupPage />} />
           </Routes>
         </Suspense>
 
@@ -90,15 +99,19 @@ export function AppShell() {
         </aside>
 
         <main className="min-w-0 space-y-4">
+          <MobilePageHeader />
+
           <PinnedStatusCard robot={robot} integration={integration} />
 
           <Suspense fallback={<PageFallback />}>
             <Routes>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/startup" element={<StartupConnectPage />} />
+              <Route path="/setup/new-robot" element={<NewRobotSetupPage />} />
               <Route path="/pairing" element={<PairingPage />} />
               <Route path="/drive" element={<DrivePage />} />
               <Route path="/ai" element={<AiCommandsPage />} />
+              <Route path="/upgrade" element={<MonetizationPage />} />
               <Route path="/speech" element={<SpeechPage />} />
               <Route path="/animations" element={<AnimationsPage />} />
               <Route path="/diagnostics" element={<DiagnosticsPage />} />

@@ -1,4 +1,4 @@
-import { cloneSnapshot } from "@/services/mockData";
+import { cloneSnapshot, createBaseSnapshot } from "@/services/mockData";
 import { mockRobotService } from "@/services/mockRobotService";
 import {
   deleteJson,
@@ -8,22 +8,28 @@ import {
   postJson
 } from "@/services/apiClient";
 import {
+  getStoredAppBackendUrl,
+  isMobileShellLikeRuntime,
   mobileRuntimeNeedsManualBackendUrl,
   persistAppBackendUrl
 } from "@/lib/runtime-target";
+import { mobileBackendDiscoveryService } from "@/services/mobileBackendDiscovery";
 import {
   buildProfile,
+  mapBridgeWatchdogStatus,
   mapCameraSnapshot,
   mapAvailableRobot,
   mapDiagnosticReport,
   mapDiagnosticsSnapshot,
   mapIntegration,
+  mapSupportBundle,
   mapRepairResult,
   mapRobot,
   mapRoutine,
   mapSettings,
   mapSupportReport,
   type ServerBootstrapResponse,
+  type ServerBridgeWatchdogStatus,
   type ServerCameraSnapshot,
   type ServerDiagnosticsSnapshot,
   type ServerDiscoveredRobot,
@@ -33,14 +39,17 @@ import {
   type ServerRobot,
   type ServerRoutine,
   type ServerSettings,
+  type ServerSupportBundleResponse,
   type ServerSupportReport
 } from "@/services/robotBackend";
 import { CHARGING_PROTECTION_RELEASE_PERCENT } from "@/lib/charging-protection";
 import { buildFeatureFlags, buildOptionalFeatureList } from "@/lib/optional-features";
+import { sanitizeRobotSerial, selectRobotSerial } from "@/lib/robot-serial";
 import type {
   AnimationItem,
   AppSettings,
   AppSnapshot,
+  BridgeWatchdogStatus,
   CameraSnapshot,
   CameraSyncResult,
   DiagnosticReport,
@@ -53,6 +62,7 @@ import type {
   RobotCommandResult,
   RobotProfile,
   Routine,
+  SupportBundle,
   SupportReport,
   WirePodConnectionMode,
   WirePodSetupStatus,
@@ -108,6 +118,12 @@ interface SupportReportApiResponse {
   snapshot: ServerDiagnosticsSnapshot;
 }
 
+interface SupportBundleApiResponse extends ServerSupportBundleResponse {}
+
+interface BridgeWatchdogApiResponse {
+  watchdog: ServerBridgeWatchdogStatus;
+}
+
 interface VoiceRepairApiResponse {
   log: ServerLog;
   robot: ServerRobot;
@@ -130,7 +146,7 @@ interface RobotEnvelope {
 let telemetryPausedUntil = 0;
 const AUTO_RECONNECT_COOLDOWN_MS = 15_000;
 const WIREPOD_SETUP_CACHE_MS = 4_000;
-const SUPPORT_ACTION_TIMEOUT_MS = 30_000;
+const SUPPORT_ACTION_TIMEOUT_MS = 60_000;
 const WIREPOD_SETUP_TIMEOUT_MS = 20_000;
 const MIN_POLLING_INTERVAL_MS = 1_000;
 const FAST_DOCKED_POLLING_INTERVAL_MS = 1_500;
@@ -155,7 +171,7 @@ const buildReconnectPayload = (
   integration: IntegrationStatus,
   settings: AppSettings
 ) => ({
-  serial: robot.serial || settings.robotSerial || integration.selectedSerial,
+  serial: selectRobotSerial(robot.serial, settings.robotSerial, integration.selectedSerial),
   name: robot.nickname || robot.name,
   nickname: robot.nickname,
   ipAddress: robot.ipAddress,
@@ -183,7 +199,7 @@ const shouldAttemptReconnect = (
     return false;
   }
 
-  if (!context.robot.serial && !context.settings.robotSerial && !context.integration.selectedSerial) {
+  if (!selectRobotSerial(context.robot.serial, context.settings.robotSerial, context.integration.selectedSerial)) {
     return false;
   }
 
@@ -230,9 +246,48 @@ const getStoredMockMode = () => {
   }
 };
 
-const useApiOrFallback = async <T,>(apiCall: () => Promise<T>, fallbackCall: () => Promise<T>) => {
+const tryRecoverMobileBackendUrl = async () => {
+  if (!isMobileShellLikeRuntime()) {
+    return false;
+  }
+
+  const discovery = await mobileBackendDiscoveryService
+    .discoverDesktopBackendWithRetry({
+      attempts: 2,
+      retryDelayMs: 1_000
+    })
+    .catch(() => null);
+
+  if (discovery?.status !== "found" || !discovery.target?.url) {
+    return false;
+  }
+
+  const currentBackendUrl = getStoredAppBackendUrl();
+  const nextBackendUrl = persistAppBackendUrl(discovery.target.url);
+
+  return Boolean(nextBackendUrl && nextBackendUrl !== currentBackendUrl);
+};
+
+const callApiWithRecoveredBackendRetry = async <T,>(apiCall: () => Promise<T>) => {
   try {
     return await apiCall();
+  } catch (error) {
+    if (!shouldUseFallback(error)) {
+      throw error;
+    }
+
+    const recovered = await tryRecoverMobileBackendUrl();
+    if (!recovered) {
+      throw error;
+    }
+
+    return apiCall();
+  }
+};
+
+const useApiOrFallback = async <T,>(apiCall: () => Promise<T>, fallbackCall: () => Promise<T>) => {
+  try {
+    return await callApiWithRecoveredBackendRetry(apiCall);
   } catch (error) {
     if (!shouldUseFallback(error) || !getStoredMockMode()) {
       throw error;
@@ -253,15 +308,17 @@ const buildBootstrapSnapshot = (fallback: AppSnapshot, response: ServerBootstrap
     response.featureFlags ?? buildFeatureFlags(resolvedOptionalModules);
   const resolvedOptionalFeatureList =
     response.optionalFeatureList ?? buildOptionalFeatureList(resolvedOptionalModules);
-  const savedProfile: RobotProfile = {
-    id: robot.id,
-    serial: robot.serial,
-    name: robot.nickname || robot.name,
-    ipAddress: robot.ipAddress,
-    token: robot.token,
-    autoReconnect: settings.reconnectOnStartup,
-    lastPairedAt: new Date().toISOString()
-  };
+  const savedProfile = robot.serial
+    ? {
+        id: robot.id,
+        serial: robot.serial,
+        name: robot.nickname || robot.name,
+        ipAddress: robot.ipAddress,
+        token: robot.token,
+        autoReconnect: settings.reconnectOnStartup,
+        lastPairedAt: new Date().toISOString()
+      }
+    : null;
 
   return {
     ...fallback,
@@ -279,14 +336,16 @@ const buildBootstrapSnapshot = (fallback: AppSnapshot, response: ServerBootstrap
     snapshots: response.snapshots.map(mapCameraSnapshot),
     availableRobots: response.robots.map(mapAvailableRobot),
     supportReports: Array.isArray(response.supportReports) ? response.supportReports.map(mapSupportReport) : [],
-    savedProfiles: [
-      savedProfile,
-      ...fallback.savedProfiles.filter((profile) =>
-        savedProfile.serial && profile.serial
-          ? profile.serial !== savedProfile.serial
-          : profile.id !== savedProfile.id
-      )
-    ].slice(0, 5)
+    savedProfiles: savedProfile
+      ? [
+          savedProfile,
+          ...fallback.savedProfiles.filter((profile) =>
+            savedProfile.serial && profile.serial
+              ? profile.serial !== savedProfile.serial
+              : profile.id !== savedProfile.id
+          )
+        ].slice(0, 5)
+      : fallback.savedProfiles
   };
 };
 
@@ -295,7 +354,7 @@ const connectPayload = (
   settings?: AppSettings,
   integration?: IntegrationStatus
 ) => ({
-  serial: robot.serial || settings?.robotSerial || integration?.selectedSerial,
+  serial: selectRobotSerial(robot.serial, settings?.robotSerial, integration?.selectedSerial),
   name: robot.nickname || robot.name,
   nickname: robot.nickname,
   ipAddress: robot.ipAddress,
@@ -326,10 +385,11 @@ const mapActionResult = (
 const buildOfflineWirePodState = (
   robot: Robot,
   integration: IntegrationStatus,
-  note = "Vector brain offline"
+  note = "Local bridge offline"
 ): RobotEnvelope => ({
   robot: {
     ...robot,
+    serial: sanitizeRobotSerial(robot.serial),
     isConnected: false,
     isCharging: robot.isCharging,
     isDocked: robot.isDocked,
@@ -339,8 +399,8 @@ const buildOfflineWirePodState = (
     mood: robot.isCharging ? "charging" : "sleepy",
     systemStatus: robot.isCharging ? "charging" : robot.isDocked ? "docked" : "offline",
     currentActivity: robot.isCharging
-      ? "Charging safely while the local brain is offline."
-      : "Vector brain offline",
+      ? "Charging safely while the local bridge is offline."
+      : "Local bridge offline",
     lastSeen: robot.lastSeen || new Date().toISOString(),
     connectionSource: "wirepod"
   },
@@ -378,16 +438,19 @@ const buildLocalSettingsTransition = ({
       integration: {
         ...mockSnapshot.integration,
         selectedSerial:
-          currentIntegration.selectedSerial ||
-          currentSettings.robotSerial ||
-          currentRobot?.serial ||
+          sanitizeRobotSerial(currentIntegration.selectedSerial, { allowPlaceholder: true }) ||
+          sanitizeRobotSerial(currentSettings.robotSerial, { allowPlaceholder: true }) ||
+          sanitizeRobotSerial(currentRobot?.serial, { allowPlaceholder: true }) ||
           mockSnapshot.integration.selectedSerial,
         note: "Mock mode is active."
       },
       robot: currentRobot
         ? {
             ...mockSnapshot.robot,
-            serial: currentSettings.robotSerial || currentRobot.serial || mockSnapshot.robot.serial,
+            serial:
+              sanitizeRobotSerial(currentSettings.robotSerial, { allowPlaceholder: true }) ||
+              sanitizeRobotSerial(currentRobot.serial, { allowPlaceholder: true }) ||
+              mockSnapshot.robot.serial,
             nickname:
               currentSettings.robotNickname ||
               currentRobot.nickname ||
@@ -405,15 +468,25 @@ const buildLocalSettingsTransition = ({
     integration: {
       ...currentIntegration,
       source: "wirepod",
+      selectedSerial: selectRobotSerial(
+        currentIntegration.selectedSerial,
+        currentSettings.robotSerial,
+        currentRobot?.serial
+      ),
       mockMode: false,
       wirePodReachable: needsBackendTarget ? false : currentIntegration.wirePodReachable,
       robotReachable: false,
-      note: needsBackendTarget ? "Save the desktop backend URL in Settings first." : "Vector brain offline",
+      note: needsBackendTarget ? "Save the desktop backend URL in Settings first." : "Local bridge offline",
       lastCheckedAt: new Date().toISOString()
     },
     robot: currentRobot
       ? {
           ...currentRobot,
+          serial: selectRobotSerial(
+            currentRobot.serial,
+            currentSettings.robotSerial,
+            currentIntegration.selectedSerial
+          ),
           isConnected: false,
           connectionState: "error",
           connectionSource: "wirepod",
@@ -425,7 +498,7 @@ const buildLocalSettingsTransition = ({
               : "offline",
           currentActivity: needsBackendTarget
             ? "Waiting for the desktop backend URL."
-            : "Vector brain offline",
+            : "Local bridge offline",
           lastSeen: currentRobot.lastSeen || new Date().toISOString()
         }
       : undefined
@@ -440,7 +513,7 @@ export const robotService = {
           "/api/app/bootstrap",
           "Vector bootstrap data is unavailable."
         );
-        return buildBootstrapSnapshot(cloneSnapshot(), response);
+        return buildBootstrapSnapshot(createBaseSnapshot(), response);
       },
       () => mockRobotService.bootstrap()
     );
@@ -455,7 +528,7 @@ export const robotService = {
         );
         return {
           robots: response.robots.map(mapAvailableRobot),
-          integration: mapIntegration(response.integration, cloneSnapshot().integration)
+          integration: mapIntegration(response.integration, createBaseSnapshot().integration)
         };
       },
       async () => ({
@@ -475,7 +548,7 @@ export const robotService = {
           input,
           "Robot pairing failed."
         );
-        const fallback = cloneSnapshot();
+        const fallback = createBaseSnapshot();
         const robot = mapRobot(response.robot, fallback.robot);
         const integration = mapIntegration(response.integration, fallback.integration);
         const profile = buildProfile(input, robot);
@@ -523,7 +596,7 @@ export const robotService = {
           ok: true,
           message: data.robot.isConnected
             ? `${data.robot.nickname ?? data.robot.name} is online and ready.`
-            : data.integration.note || "Vector brain offline",
+            : data.integration.note || "Local bridge offline",
           data
         };
       },
@@ -1024,13 +1097,26 @@ export const robotService = {
     );
   },
 
+  async getBridgeWatchdog(current: AppSnapshot): Promise<BridgeWatchdogStatus | undefined> {
+    return useApiOrFallback(
+      async () => {
+        const response = await getJson<BridgeWatchdogApiResponse>(
+          "/api/diagnostics/watchdog",
+          "Bridge watchdog status could not be loaded."
+        );
+        return mapBridgeWatchdogStatus(response.watchdog);
+      },
+      async () => mockRobotService.getBridgeWatchdog(current)
+    );
+  },
+
   async runDiagnostics(current: AppSnapshot) {
     return useApiOrFallback(
       async () => {
         const response = await postJson<DiagnosticsRunResponse>(
           "/api/diagnostics/run",
           undefined,
-          "Diagnostics failed."
+          "The diagnostics request did not finish."
         );
         return {
           ok: true,
@@ -1189,6 +1275,20 @@ export const robotService = {
     );
   },
 
+  async getSupportBundle(current: AppSnapshot): Promise<SupportBundle> {
+    return useApiOrFallback(
+      async () => {
+        const response = await getJson<SupportBundleApiResponse>(
+          "/api/support/bundle",
+          "Support bundle download failed.",
+          { timeoutMs: SUPPORT_ACTION_TIMEOUT_MS }
+        );
+        return mapSupportBundle(response, current);
+      },
+      async () => mockRobotService.getSupportBundle(current)
+    );
+  },
+
   async updateSettings(
     patch: Partial<AppSettings>,
     current: AppSettings,
@@ -1196,6 +1296,10 @@ export const robotService = {
     currentRobot?: Robot
   ): Promise<SettingsEnvelope> {
     clearWirePodSetupCache();
+    const normalizedRobotSerial =
+      patch.robotSerial === undefined
+        ? undefined
+        : sanitizeRobotSerial(patch.robotSerial, { allowPlaceholder: patch.mockMode ?? current.mockMode });
     const normalizedBackendUrl = persistAppBackendUrl(
       patch.appBackendUrl === undefined ? current.appBackendUrl : patch.appBackendUrl
     );
@@ -1212,7 +1316,7 @@ export const robotService = {
       protectChargingUntilFull: patch.protectChargingUntilFull,
       pollingIntervalMs: patch.pollingIntervalMs,
       liveUpdateMode: patch.liveUpdateMode,
-      serial: patch.robotSerial
+      serial: normalizedRobotSerial ?? (patch.robotSerial !== undefined ? "" : undefined)
     };
     const localTransition = buildLocalSettingsTransition({
       patch,
@@ -1240,19 +1344,33 @@ export const robotService = {
           "Settings update failed."
         );
         return {
-          settings: mapSettings(response.settings, { ...current, ...patch, ...localOnlyPatch }),
-          integration: mapIntegration(response.integration, cloneSnapshot().integration)
+          settings: mapSettings(response.settings, {
+            ...current,
+            ...patch,
+            robotSerial: normalizedRobotSerial ?? (patch.robotSerial !== undefined ? "" : current.robotSerial),
+            ...localOnlyPatch
+          }),
+          integration: mapIntegration(response.integration, createBaseSnapshot().integration)
         };
       },
       async () => ({
-        settings: { ...current, ...patch, ...localOnlyPatch },
+        settings: {
+          ...current,
+          ...patch,
+          robotSerial: normalizedRobotSerial ?? (patch.robotSerial !== undefined ? "" : current.robotSerial),
+          ...localOnlyPatch
+        },
         integration:
           localTransition?.integration ?? {
-            ...cloneSnapshot().integration,
-            mockMode: patch.mockMode ?? cloneSnapshot().integration.mockMode,
-            autoDetectEnabled: patch.autoDetectWirePod ?? cloneSnapshot().integration.autoDetectEnabled,
+            ...createBaseSnapshot().integration,
+            mockMode: patch.mockMode ?? createBaseSnapshot().integration.mockMode,
+            autoDetectEnabled:
+              patch.autoDetectWirePod ?? createBaseSnapshot().integration.autoDetectEnabled,
             reconnectOnStartup:
-              patch.reconnectOnStartup ?? patch.autoReconnect ?? cloneSnapshot().integration.reconnectOnStartup
+              patch.reconnectOnStartup ??
+              patch.autoReconnect ??
+              createBaseSnapshot().integration.reconnectOnStartup,
+            selectedSerial: normalizedRobotSerial
           },
         robot: localTransition?.robot
       })
@@ -1261,7 +1379,7 @@ export const robotService = {
 
   async getWirePodWeatherConfig(): Promise<WirePodWeatherConfig> {
     return getJson<WirePodWeatherApiResponse>(
-      "/api/settings/wirepod/weather",
+      "/api/settings/bridge/weather",
       "WirePod weather settings are unavailable."
     ).then((response) => response.weather);
   },
@@ -1272,7 +1390,7 @@ export const robotService = {
     unit?: string;
   }): Promise<WirePodWeatherConfig> {
     return postJson<WirePodWeatherApiResponse>(
-      "/api/settings/wirepod/weather",
+      "/api/settings/bridge/weather",
       payload,
       "WirePod weather settings could not be saved."
     ).then((response) => response.weather);
@@ -1284,7 +1402,7 @@ export const robotService = {
     }
 
     return getJson<WirePodSetupApiResponse>(
-      "/api/settings/wirepod/setup",
+      "/api/settings/bridge/setup",
       "WirePod setup details are unavailable."
     ).then((response) => {
       wirePodSetupCache = {
@@ -1302,7 +1420,7 @@ export const robotService = {
   }): Promise<WirePodSetupStatus> {
     clearWirePodSetupCache();
     return postJson<WirePodSetupApiResponse>(
-      "/api/settings/wirepod/setup",
+      "/api/settings/bridge/setup",
       payload ?? {},
       "WirePod setup could not be completed.",
       { timeoutMs: WIREPOD_SETUP_TIMEOUT_MS }
@@ -1416,10 +1534,12 @@ export const robotService = {
       lastReconnectAttemptAt = Date.now();
 
       try {
-        const response = await postJson<StatusApiResponse>(
-          "/api/robot/connect",
-          buildReconnectPayload(context.robot, context.integration, context.settings),
-          "Robot reconnection failed."
+        const response = await callApiWithRecoveredBackendRetry(() =>
+          postJson<StatusApiResponse>(
+            "/api/robot/connect",
+            buildReconnectPayload(context.robot, context.integration, context.settings),
+            "Robot reconnection failed."
+          )
         );
 
         onUpdate(mapRobotEnvelope(response, context.robot, context.integration));
@@ -1438,9 +1558,11 @@ export const robotService = {
         }
 
         const context = getContext();
-        const response = await getJson<StatusApiResponse>(
-          "/api/robot/status",
-          "Robot status poll failed."
+        const response = await callApiWithRecoveredBackendRetry(() =>
+          getJson<StatusApiResponse>(
+            "/api/robot/status",
+            "Robot status poll failed."
+          )
         );
         stopMockTelemetry();
         const nextState = mapRobotEnvelope(response, context.robot, context.integration);

@@ -6,12 +6,15 @@ import type {
   CameraSnapshotRecord,
   CommandGapRecord,
   CommandLogRecord,
+  LearnedCommandRecord,
   SupportReportRecord,
   RobotStatus,
   RoamSessionRecord,
   RoutineRecord,
   RuntimeSettings
 } from "../robot/types.js";
+import { sanitizeRobotSerial } from "../robot/serials.js";
+import { sanitizeLearnedCommands } from "../services/learnedCommandsService.js";
 
 interface PersistedRobotProfile {
   aliases: Record<string, string>;
@@ -23,6 +26,7 @@ export interface PersistedState {
   aiMemory: AiMemoryRecord[];
   automationControl: AutomationControlRecord;
   commandGaps: CommandGapRecord[];
+  learnedCommands: LearnedCommandRecord[];
   logs: CommandLogRecord[];
   robotProfile: PersistedRobotProfile;
   roamSessions: RoamSessionRecord[];
@@ -59,6 +63,7 @@ const defaultState = (): PersistedState => ({
     autoDockThreshold: 24
   },
   commandGaps: [],
+  learnedCommands: [],
   settings: defaultSettings(),
   routines: [],
   logs: [],
@@ -98,9 +103,11 @@ export const createLocalStore = (filePath: string) => {
           ...(raw.automationControl ?? {})
         },
         commandGaps: Array.isArray(raw.commandGaps) ? raw.commandGaps.slice(0, 120) : [],
+        learnedCommands: sanitizeLearnedCommands(raw.learnedCommands),
         settings: {
           ...defaultSettings(),
-          ...(raw.settings ?? {})
+          ...(raw.settings ?? {}),
+          serial: sanitizeRobotSerial(raw.settings?.serial) ?? ""
         },
         routines: Array.isArray(raw.routines) ? raw.routines : [],
         logs: Array.isArray(raw.logs) ? raw.logs.slice(0, 200) : [],
@@ -109,7 +116,8 @@ export const createLocalStore = (filePath: string) => {
         supportReports: Array.isArray(raw.supportReports) ? raw.supportReports.slice(0, 40) : [],
         robotProfile: {
           ...defaultState().robotProfile,
-          ...(raw.robotProfile ?? {})
+          ...(raw.robotProfile ?? {}),
+          selectedSerial: sanitizeRobotSerial(raw.robotProfile?.selectedSerial) ?? ""
         }
       };
     } catch {
@@ -143,6 +151,10 @@ export const createLocalStore = (filePath: string) => {
           robotProfile: {
             ...state.robotProfile,
             ...patch,
+            selectedSerial:
+              patch.selectedSerial === undefined
+                ? state.robotProfile.selectedSerial
+                : sanitizeRobotSerial(patch.selectedSerial) ?? "",
             aliases: {
               ...state.robotProfile.aliases,
               ...(patch.aliases ?? {})
@@ -158,7 +170,9 @@ export const createLocalStore = (filePath: string) => {
           ...state,
           settings: {
             ...state.settings,
-            ...patch
+            ...patch,
+            serial:
+              patch.serial === undefined ? state.settings.serial : sanitizeRobotSerial(patch.serial) ?? ""
           }
         };
         writeState(nextState);
@@ -181,6 +195,15 @@ export const createLocalStore = (filePath: string) => {
         const nextState = {
           ...state,
           aiMemory: aiMemory.slice(0, 100)
+        };
+        writeState(nextState);
+        return nextState;
+      })(),
+    saveLearnedCommands: (learnedCommands: LearnedCommandRecord[]) =>
+      state = (() => {
+        const nextState = {
+          ...state,
+          learnedCommands: learnedCommands.slice(0, 120)
         };
         writeState(nextState);
         return nextState;
@@ -248,14 +271,14 @@ export const buildOfflineRobot = (
     selectedSerial?: string;
     token?: string;
   },
-  message = "Vector brain offline",
+  message = "Local bridge offline",
   source: RobotStatus["connectionSource"] = "wirepod"
 ): RobotStatus => {
-  const serial = profile.selectedSerial || "vector-local";
-  const alias = profile.aliases?.[serial];
+  const serial = sanitizeRobotSerial(profile.selectedSerial);
+  const alias = serial ? profile.aliases?.[serial] : undefined;
 
   return {
-    id: `vector-${serial}`,
+    id: serial ? `vector-${serial}` : "vector-offline",
     serial,
     name: alias || "Vector",
     nickname: alias,

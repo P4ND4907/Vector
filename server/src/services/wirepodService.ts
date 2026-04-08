@@ -115,6 +115,22 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const getSpeechHoldMs = (text: string) => Math.min(10_000, Math.max(5_500, text.trim().length * 95));
 
+const getAnimationHoldMs = (intent: string) => {
+  if (intent === "intent_weather_extend") {
+    return 1_650;
+  }
+
+  if (intent === "intent_play_blackjack" || intent === "intent_clock_time") {
+    return 1_300;
+  }
+
+  if (intent.startsWith("intent_greeting_") || intent === "intent_knowledge_promptquestion") {
+    return 1_000;
+  }
+
+  return 850;
+};
+
 const normalizeFetchError = (error: unknown, fallbackMessage: string) => {
   if (!(error instanceof Error)) {
     return fallbackMessage;
@@ -173,7 +189,7 @@ export const createWirePodService = ({
   let lastProbes: WirePodProbeResult[] = [];
   let lastHealthyProbeAt = 0;
   let lastFailureAt = 0;
-  let lastFailureMessage = "Vector brain offline";
+  let lastFailureMessage = "Local bridge offline";
   let sdkInfoCache: { endpoint: string; expiresAt: number; value: WirePodSdkInfo } | null = null;
 
   const invalidateCaches = () => {
@@ -308,7 +324,12 @@ export const createWirePodService = ({
     const startedAt = Date.now();
 
     try {
-      await requestSdkJson<WirePodSdkInfo>(endpoint, ROUTES.sdkInfo, Math.min(timeoutMs, PROBE_TIMEOUT_MS));
+      await requestJson<WirePodConfig>(
+        endpoint,
+        ROUTES.getConfig,
+        undefined,
+        Math.min(timeoutMs, PROBE_TIMEOUT_MS)
+      );
       return {
         endpoint,
         source,
@@ -361,7 +382,7 @@ export const createWirePodService = ({
     activeEndpoint = "";
     invalidateCaches();
     lastFailureAt = Date.now();
-    lastFailureMessage = "Vector brain offline";
+    lastFailureMessage = "Local bridge offline";
     onEndpointFailure(probes, lastFailureMessage);
     throw new Error(lastFailureMessage);
   };
@@ -379,7 +400,7 @@ export const createWirePodService = ({
     }
 
     if (!activeEndpoint && Date.now() - lastFailureAt < FAILURE_CACHE_MS) {
-      throw new Error(lastFailureMessage || "Vector brain offline");
+      throw new Error(lastFailureMessage || "Local bridge offline");
     }
 
     if (activeEndpoint) {
@@ -506,7 +527,7 @@ export const createWirePodService = ({
         );
       } catch (error) {
         throw new Error(
-          normalizeFetchError(error, "Vector is not responding through WirePod right now.")
+          normalizeFetchError(error, "The local bridge is online, but Vector is not responding right now.")
         );
       }
     },
@@ -705,12 +726,13 @@ export const createWirePodService = ({
       });
     },
     async playAnimation(serial: string, intent: string) {
-      return withBehaviorControl(serial, async (endpoint) =>
-        requestSdkText(
+      return withBehaviorControl(serial, async (endpoint) => {
+        await requestSdkText(
           endpoint,
           `${ROUTES.cloudIntent}?intent=${encodeURIComponent(intent)}&serial=${encodeURIComponent(serial)}`
-        )
-      );
+        );
+        await sleep(getAnimationHoldMs(intent));
+      });
     },
     async setVolume(serial: string, volume: number) {
       return withBehaviorControl(serial, async (endpoint) =>

@@ -1,5 +1,6 @@
 import type { AiMemoryRecord, RobotController } from "../robot/types.js";
 import { previewAiCommand } from "./aiCommandService.js";
+import { personality } from "./personalityService.js";
 
 interface AiBrainEnv {
   openaiApiKey: string;
@@ -45,26 +46,24 @@ const buildFallbackReply = async (
   const settings = await controller.getSettings();
 
   if (/\b(what is my name|whats my name|who am i)\b/i.test(normalized)) {
-    return settings.userName
-      ? `You told me your name is ${settings.userName}.`
-      : "I do not know your name yet. Try saying my name is and then your name.";
+    return personality.recallUserName(settings.userName);
   }
 
   if (/\b(what is your name|whats your name)\b/i.test(normalized)) {
     const status = await controller.getStatus();
-    return `I am ${status.nickname ?? status.name}.`;
+    return personality.robotNameReply(status.nickname ?? status.name);
   }
 
-  const parsed = await previewAiCommand(message);
+  const parsed = await previewAiCommand(message, controller);
   if (parsed.canExecute) {
-    return `I recognized that as: ${parsed.summary}. You can run it from AI Commands or trigger it by voice when supported.`;
+    return personality.commandRecognized(parsed.summary);
   }
 
   if (memory.length) {
-    return `I do not have a live answer for that yet, but I am tracking ${memory.length} saved memory item${memory.length === 1 ? "" : "s"} locally.`;
+    return personality.memoryFallback(memory.length);
   }
 
-  return "I can chat, remember simple facts, and fall back to robot commands. Try hello, battery, weather, timers, or diagnostics.";
+  return personality.baseFallback();
 };
 
 export const saveAiMemory = (
@@ -140,7 +139,7 @@ export const buildAiBrainChat = async ({
       body: JSON.stringify({
         model: env.openaiModel,
         instructions:
-          "You are Vector Control Hub's AI brain. Reply briefly, warmly, and clearly. Use saved memory when helpful. If the user appears to be asking for a robot action, keep the answer short and actionable rather than roleplaying.",
+          "You are Vector Control Hub's AI brain. Reply briefly, warmly, and clearly with a playful, curious robot personality. Be kind, lightly expressive, and never overly theatrical. Use saved memory when helpful. If the user appears to be asking for a robot action, keep the answer short and actionable rather than roleplaying.",
         input: [
           {
             role: "user",

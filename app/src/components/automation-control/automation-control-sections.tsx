@@ -51,6 +51,8 @@ export function AutomationOverviewCard({
   automationState,
   roamSessionsCount,
   storedDataPoints,
+  controlsDisabled = false,
+  controlMessage,
   onStartRoam,
   onPauseRoam,
   onResumeRoam,
@@ -61,6 +63,8 @@ export function AutomationOverviewCard({
   automationState: ActionFeedback;
   roamSessionsCount: number;
   storedDataPoints: number;
+  controlsDisabled?: boolean;
+  controlMessage?: string;
   onStartRoam: () => void;
   onPauseRoam: () => void;
   onResumeRoam: () => void;
@@ -93,7 +97,7 @@ export function AutomationOverviewCard({
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={onStartRoam}
-            disabled={automationState.status === "loading" || automationControl.status === "running"}
+            disabled={controlsDisabled || automationState.status === "loading" || automationControl.status === "running"}
           >
             <Play className="h-4 w-4" />
             Start roam
@@ -101,7 +105,7 @@ export function AutomationOverviewCard({
           <Button
             variant="outline"
             onClick={onPauseRoam}
-            disabled={automationState.status === "loading" || automationControl.status !== "running"}
+            disabled={controlsDisabled || automationState.status === "loading" || automationControl.status !== "running"}
           >
             <Pause className="h-4 w-4" />
             Pause
@@ -109,7 +113,7 @@ export function AutomationOverviewCard({
           <Button
             variant="outline"
             onClick={onResumeRoam}
-            disabled={automationState.status === "loading" || automationControl.status !== "paused"}
+            disabled={controlsDisabled || automationState.status === "loading" || automationControl.status !== "paused"}
           >
             <Play className="h-4 w-4" />
             Resume
@@ -117,12 +121,12 @@ export function AutomationOverviewCard({
           <Button
             variant="secondary"
             onClick={onStopRoam}
-            disabled={automationState.status === "loading" || automationControl.status === "idle"}
+            disabled={controlsDisabled || automationState.status === "loading" || automationControl.status === "idle"}
           >
             <Square className="h-4 w-4" />
             Stop and store
           </Button>
-          <Button variant="ghost" onClick={onReturnToDock}>
+          <Button variant="ghost" onClick={onReturnToDock} disabled={controlsDisabled}>
             <Radar className="h-4 w-4" />
             Send to charger
           </Button>
@@ -131,7 +135,8 @@ export function AutomationOverviewCard({
         <div className="flex items-center gap-2">
           <Badge>{automationControl.behavior}</Badge>
           <p className="text-sm text-muted-foreground">
-            {automationState.message ??
+            {controlMessage ??
+              automationState.message ??
               "Autonomous roams keep their event log, distance, snapshots, and telemetry in local storage."}
           </p>
         </div>

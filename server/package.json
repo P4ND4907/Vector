@@ -1,14 +1,15 @@
 {
   "name": "vector-control-hub-server",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.27",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
-    "lint": "npm run typecheck"
+    "lint": "npm run typecheck",
+    "test": "node --import tsx --test test/command-engine.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

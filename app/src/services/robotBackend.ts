@@ -1,7 +1,9 @@
 import type {
+  CommandGap,
   AiCommandPreview,
   AppSettings,
   AppSnapshot,
+  BridgeWatchdogStatus,
   CameraSnapshot,
   DiagnosticReport,
   DiagnosticsSnapshot,
@@ -16,9 +18,12 @@ import type {
   Robot,
   RobotProfile,
   Routine,
-  SupportReport
+  SupportBundle,
+  SupportReport,
+  VoiceDiagnostics
 } from "@/types";
 import { getStoredAppBackendUrl } from "@/lib/runtime-target";
+import { sanitizeRobotSerial } from "@/lib/robot-serial";
 
 export interface ServerRobot {
   id: string;
@@ -105,6 +110,10 @@ export interface ServerIntegration {
   source: IntegrationStatus["source"];
   wirePodReachable: boolean;
   wirePodBaseUrl: string;
+  bridgeProvider?: IntegrationStatus["bridgeProvider"];
+  bridgeLabel?: IntegrationStatus["bridgeLabel"];
+  bridgeReachable?: boolean;
+  bridgeBaseUrl?: string;
   managedBridge: ManagedBridgeStatus;
   selectedSerial?: string;
   note?: string;
@@ -124,6 +133,7 @@ export interface ServerDiagnosticsSnapshot {
   latestSuccessfulCommand?: ServerLog;
   latestFailedCommand?: ServerLog;
   troubleshooting: string[];
+  bridgeWatchdog?: ServerBridgeWatchdogStatus;
 }
 
 export interface ServerRepairStep {
@@ -150,6 +160,56 @@ export interface ServerSupportReport {
   robotName: string;
   integrationNote?: string;
   repairResult: ServerRepairResult;
+}
+
+export interface ServerVoiceDiagnostics {
+  wakeWordMode: VoiceDiagnostics["wakeWordMode"];
+  locale: string;
+  volume: number;
+  lastIntent?: string;
+  lastTranscription?: string;
+  lastHeardAt?: string;
+  status: VoiceDiagnostics["status"];
+  summary: string;
+  troubleshooting: string[];
+}
+
+export interface ServerBridgeWatchdogStatus {
+  observedAt: string;
+  overallStatus: BridgeWatchdogStatus["overallStatus"];
+  issueCode: BridgeWatchdogStatus["issueCode"];
+  summary: string;
+  recommendedAction: string;
+  bridgeReachable: boolean;
+  robotReachable: boolean;
+  autoRecoveryAvailable: boolean;
+  autoRecoveryLikelyHelpful: boolean;
+  connTimerEvents: number;
+  reconnectEvents: number;
+  recentEvidence: string[];
+}
+
+export interface ServerCommandGap {
+  id: string;
+  createdAt: string;
+  source: CommandGap["source"];
+  prompt: string;
+  normalizedPrompt: string;
+  category: CommandGap["category"];
+  note: string;
+  suggestedArea?: string;
+  heardAt?: string;
+  matchedIntent?: string;
+}
+
+export interface ServerSupportBundleResponse {
+  generatedAt: string;
+  diagnosticsSnapshot: ServerDiagnosticsSnapshot;
+  voiceDiagnostics: ServerVoiceDiagnostics;
+  supportReports: ServerSupportReport[];
+  commandGaps: ServerCommandGap[];
+  settings: ServerSettings;
+  bridgeWatchdog?: ServerBridgeWatchdogStatus;
 }
 
 export interface ServerBootstrapResponse {
@@ -180,7 +240,10 @@ const normalizeVolume = (value: number | undefined, fallback: number) => {
 
 export const mapRobot = (robot: ServerRobot, fallback?: Robot): Robot => ({
   id: robot.id || fallback?.id || crypto.randomUUID(),
-  serial: robot.serial ?? fallback?.serial,
+  serial: sanitizeRobotSerial(robot.serial ?? fallback?.serial, {
+    allowPlaceholder:
+      robot.connectionSource === "mock" || fallback?.connectionSource === "mock"
+  }),
   name: robot.name || fallback?.name || "Vector",
   nickname: robot.nickname ?? fallback?.nickname,
   ipAddress: robot.ipAddress || fallback?.ipAddress || "Unavailable",
@@ -204,8 +267,10 @@ export const mapRobot = (robot: ServerRobot, fallback?: Robot): Robot => ({
 
 export const mapSettings = (settings: ServerSettings, fallback: AppSettings): AppSettings => ({
   ...fallback,
-  theme: settings.theme ?? fallback.theme,
-  colorTheme: settings.colorTheme ?? fallback.colorTheme,
+  // Theme is a local UI preference, so keep the device's saved choice instead
+  // of letting bootstrap/mock server defaults snap it back on launch.
+  theme: fallback.theme,
+  colorTheme: fallback.colorTheme,
   appBackendUrl: getStoredAppBackendUrl() || fallback.appBackendUrl,
   autoReconnect: settings.reconnectOnStartup,
   autoDetectWirePod: settings.autoDetectWirePod,
@@ -216,37 +281,62 @@ export const mapSettings = (settings: ServerSettings, fallback: AppSettings): Ap
   protectChargingUntilFull: settings.protectChargingUntilFull,
   pollingIntervalMs: settings.pollingIntervalMs,
   liveUpdateMode: settings.liveUpdateMode,
-  robotSerial: settings.serial
+  robotSerial: sanitizeRobotSerial(settings.serial, { allowPlaceholder: settings.mockMode }) ?? ""
 });
 
 export const mapIntegration = (
   integration: ServerIntegration,
   fallback?: IntegrationStatus
-): IntegrationStatus => ({
-  source: integration.source ?? fallback?.source ?? "wirepod",
-  wirePodReachable: integration.wirePodReachable ?? fallback?.wirePodReachable ?? false,
-  wirePodBaseUrl: integration.wirePodBaseUrl || fallback?.wirePodBaseUrl || "http://127.0.0.1:8080",
-  managedBridge: integration.managedBridge ?? fallback?.managedBridge ?? {
-    source: "none",
-    available: false,
-    running: false,
-    endpoint: integration.wirePodBaseUrl || fallback?.wirePodBaseUrl || "http://127.0.0.1:8080",
-    note: "No bundled local bridge was found yet."
-  },
-  selectedSerial: integration.selectedSerial ?? fallback?.selectedSerial,
-  note: integration.note ?? fallback?.note,
-  robotReachable: integration.robotReachable ?? fallback?.robotReachable ?? false,
-  mockMode: integration.mockMode ?? fallback?.mockMode ?? false,
-  autoDetectEnabled: integration.autoDetectEnabled ?? fallback?.autoDetectEnabled ?? true,
-  reconnectOnStartup: integration.reconnectOnStartup ?? fallback?.reconnectOnStartup ?? true,
-  customEndpoint: integration.customEndpoint ?? fallback?.customEndpoint ?? "",
-  lastCheckedAt: integration.lastCheckedAt ?? fallback?.lastCheckedAt ?? new Date().toISOString(),
-  probes: Array.isArray(integration.probes) ? integration.probes : fallback?.probes ?? []
-});
+): IntegrationStatus => {
+  const mockMode = integration.mockMode ?? fallback?.mockMode ?? false;
+
+  return {
+    source: integration.source ?? fallback?.source ?? "wirepod",
+    wirePodReachable: integration.wirePodReachable ?? fallback?.wirePodReachable ?? false,
+    wirePodBaseUrl: integration.wirePodBaseUrl || fallback?.wirePodBaseUrl || "http://127.0.0.1:8080",
+    bridgeProvider: integration.bridgeProvider ?? fallback?.bridgeProvider ?? "wirepod",
+    bridgeLabel: integration.bridgeLabel ?? fallback?.bridgeLabel ?? "WirePod compatibility bridge",
+    bridgeReachable:
+      integration.bridgeReachable ??
+      integration.wirePodReachable ??
+      fallback?.bridgeReachable ??
+      fallback?.wirePodReachable ??
+      false,
+    bridgeBaseUrl:
+      integration.bridgeBaseUrl ||
+      integration.wirePodBaseUrl ||
+      fallback?.bridgeBaseUrl ||
+      fallback?.wirePodBaseUrl ||
+      "http://127.0.0.1:8080",
+    managedBridge: integration.managedBridge ?? fallback?.managedBridge ?? {
+      source: "none",
+      available: false,
+      running: false,
+      endpoint:
+        integration.bridgeBaseUrl ||
+        integration.wirePodBaseUrl ||
+        fallback?.bridgeBaseUrl ||
+        fallback?.wirePodBaseUrl ||
+        "http://127.0.0.1:8080",
+      note: "No bundled local bridge was found yet."
+    },
+    selectedSerial: sanitizeRobotSerial(integration.selectedSerial ?? fallback?.selectedSerial, {
+      allowPlaceholder: mockMode
+    }),
+    note: integration.note ?? fallback?.note,
+    robotReachable: integration.robotReachable ?? fallback?.robotReachable ?? false,
+    mockMode,
+    autoDetectEnabled: integration.autoDetectEnabled ?? fallback?.autoDetectEnabled ?? true,
+    reconnectOnStartup: integration.reconnectOnStartup ?? fallback?.reconnectOnStartup ?? true,
+    customEndpoint: integration.customEndpoint ?? fallback?.customEndpoint ?? "",
+    lastCheckedAt: integration.lastCheckedAt ?? fallback?.lastCheckedAt ?? new Date().toISOString(),
+    probes: Array.isArray(integration.probes) ? integration.probes : fallback?.probes ?? []
+  };
+};
 
 export const buildProfile = (input: PairRobotInput, robot: Robot): RobotProfile => ({
   id: robot.id,
-  serial: input.serial?.trim() || robot.serial,
+  serial: sanitizeRobotSerial(input.serial?.trim() || robot.serial),
   name: input.name.trim() || robot.nickname || robot.name,
   ipAddress: input.ipAddress.trim() || robot.ipAddress,
   token: input.token.trim() || robot.token,
@@ -269,7 +359,7 @@ export const mapRoutine = (routine: ServerRoutine): Routine => ({
 
 export const mapAvailableRobot = (robot: ServerDiscoveredRobot): PairingCandidate => ({
   id: robot.id,
-  serial: robot.serial,
+  serial: sanitizeRobotSerial(robot.serial),
   name: robot.name,
   ipAddress: robot.ipAddress,
   signalStrength: robot.signalStrength,
@@ -302,6 +392,25 @@ export const mapSupportReport = (report: ServerSupportReport): SupportReport => 
   repairResult: mapRepairResult(report.repairResult)
 });
 
+export const mapVoiceDiagnostics = (voice: ServerVoiceDiagnostics): VoiceDiagnostics => ({
+  ...voice,
+  troubleshooting: Array.isArray(voice.troubleshooting) ? voice.troubleshooting : []
+});
+
+export const mapBridgeWatchdogStatus = (
+  watchdog: ServerBridgeWatchdogStatus | undefined
+): BridgeWatchdogStatus | undefined =>
+  watchdog
+    ? {
+        ...watchdog,
+        recentEvidence: Array.isArray(watchdog.recentEvidence) ? watchdog.recentEvidence : []
+      }
+    : undefined;
+
+export const mapCommandGap = (gap: ServerCommandGap): CommandGap => ({
+  ...gap
+});
+
 export const mapDiagnosticsSnapshot = (
   snapshot: ServerDiagnosticsSnapshot,
   fallback: AppSnapshot
@@ -311,11 +420,27 @@ export const mapDiagnosticsSnapshot = (
   logs: snapshot.logs,
   latestSuccessfulCommand: snapshot.latestSuccessfulCommand,
   latestFailedCommand: snapshot.latestFailedCommand,
-  troubleshooting: Array.isArray(snapshot.troubleshooting) ? snapshot.troubleshooting : []
+  troubleshooting: Array.isArray(snapshot.troubleshooting) ? snapshot.troubleshooting : [],
+  bridgeWatchdog: mapBridgeWatchdogStatus(snapshot.bridgeWatchdog)
 });
 
 export const mapAiCommandPreview = (preview: AiCommandPreview): AiCommandPreview => ({
   ...preview,
   warnings: Array.isArray(preview.warnings) ? preview.warnings : [],
   actions: Array.isArray(preview.actions) ? preview.actions : []
+});
+
+export const mapSupportBundle = (
+  bundle: ServerSupportBundleResponse,
+  fallback: AppSnapshot
+): SupportBundle => ({
+  generatedAt: bundle.generatedAt,
+  diagnosticsSnapshot: mapDiagnosticsSnapshot(bundle.diagnosticsSnapshot, fallback),
+  voiceDiagnostics: mapVoiceDiagnostics(bundle.voiceDiagnostics),
+  supportReports: Array.isArray(bundle.supportReports)
+    ? bundle.supportReports.map(mapSupportReport)
+    : [],
+  commandGaps: Array.isArray(bundle.commandGaps) ? bundle.commandGaps.map(mapCommandGap) : [],
+  settings: mapSettings(bundle.settings, fallback.settings),
+  bridgeWatchdog: mapBridgeWatchdogStatus(bundle.bridgeWatchdog)
 });

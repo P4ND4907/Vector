@@ -6,6 +6,12 @@ const MAX_NATIVE_HTTP_CONCURRENCY = 2;
 const NATIVE_HTTP_CONNECT_TIMEOUT_MS = 3_000;
 const NATIVE_HTTP_READ_TIMEOUT_MS = 8_000;
 
+export interface ApiRequestOptions {
+  connectTimeoutMs?: number;
+  readTimeoutMs?: number;
+  timeoutMs?: number;
+}
+
 export class ApiClientError extends Error {
   constructor(
     message: string,
@@ -90,6 +96,29 @@ let nativeHttpActiveCount = 0;
 const nativeHttpWaiters: Array<() => void> = [];
 const nativeHttpInflightGets = new Map<string, Promise<HttpResponse>>();
 
+const resolveConnectTimeout = (options?: ApiRequestOptions) =>
+  options?.connectTimeoutMs ?? options?.timeoutMs ?? NATIVE_HTTP_CONNECT_TIMEOUT_MS;
+
+const resolveReadTimeout = (options?: ApiRequestOptions) =>
+  options?.readTimeoutMs ?? options?.timeoutMs ?? NATIVE_HTTP_READ_TIMEOUT_MS;
+
+const fetchWithOptionalTimeout = async (input: RequestInfo | URL, init: RequestInit, options?: ApiRequestOptions) => {
+  const timeoutMs = options?.timeoutMs ?? options?.readTimeoutMs;
+
+  if (!timeoutMs || timeoutMs <= 0) {
+    return fetch(input, init);
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
 const acquireNativeHttpSlot = async () => {
   if (!shouldUseNativeHttp()) {
     return () => {};
@@ -139,7 +168,7 @@ const withNativeHttp = async (
   return pending;
 };
 
-export const getJson = async <T,>(path: string, fallbackMessage?: string) => {
+export const getJson = async <T,>(path: string, fallbackMessage?: string, options?: ApiRequestOptions) => {
   try {
     const url = getRequestUrl(path, fallbackMessage);
     if (shouldUseNativeHttp()) {
@@ -147,14 +176,14 @@ export const getJson = async <T,>(path: string, fallbackMessage?: string) => {
         CapacitorHttp.get({
           url,
           responseType: "json",
-          connectTimeout: NATIVE_HTTP_CONNECT_TIMEOUT_MS,
-          readTimeout: NATIVE_HTTP_READ_TIMEOUT_MS
+          connectTimeout: resolveConnectTimeout(options),
+          readTimeout: resolveReadTimeout(options)
         })
       );
       return readNativeJson<T>(response, fallbackMessage);
     }
 
-    const response = await fetch(url);
+    const response = await fetchWithOptionalTimeout(url, {}, options);
     return readJson<T>(response, fallbackMessage);
   } catch (error) {
     if (error instanceof ApiClientError) {
@@ -164,7 +193,7 @@ export const getJson = async <T,>(path: string, fallbackMessage?: string) => {
   }
 };
 
-export const postJson = async <T,>(path: string, body?: unknown, fallbackMessage?: string) => {
+export const postJson = async <T,>(path: string, body?: unknown, fallbackMessage?: string, options?: ApiRequestOptions) => {
   try {
     const url = getRequestUrl(path, fallbackMessage);
     if (shouldUseNativeHttp()) {
@@ -174,20 +203,20 @@ export const postJson = async <T,>(path: string, body?: unknown, fallbackMessage
           headers: body === undefined ? undefined : { "Content-Type": "application/json" },
           data: body,
           responseType: "json",
-          connectTimeout: NATIVE_HTTP_CONNECT_TIMEOUT_MS,
-          readTimeout: NATIVE_HTTP_READ_TIMEOUT_MS
+          connectTimeout: resolveConnectTimeout(options),
+          readTimeout: resolveReadTimeout(options)
         })
       );
       return readNativeJson<T>(response, fallbackMessage);
     }
 
-    const response = await fetch(url, {
+    const response = await fetchWithOptionalTimeout(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: body === undefined ? undefined : JSON.stringify(body)
-    });
+    }, options);
     return readJson<T>(response, fallbackMessage);
   } catch (error) {
     if (error instanceof ApiClientError) {
@@ -197,7 +226,7 @@ export const postJson = async <T,>(path: string, body?: unknown, fallbackMessage
   }
 };
 
-export const patchJson = async <T,>(path: string, body: unknown, fallbackMessage?: string) => {
+export const patchJson = async <T,>(path: string, body: unknown, fallbackMessage?: string, options?: ApiRequestOptions) => {
   try {
     const url = getRequestUrl(path, fallbackMessage);
     if (shouldUseNativeHttp()) {
@@ -207,20 +236,20 @@ export const patchJson = async <T,>(path: string, body: unknown, fallbackMessage
           headers: { "Content-Type": "application/json" },
           data: body,
           responseType: "json",
-          connectTimeout: NATIVE_HTTP_CONNECT_TIMEOUT_MS,
-          readTimeout: NATIVE_HTTP_READ_TIMEOUT_MS
+          connectTimeout: resolveConnectTimeout(options),
+          readTimeout: resolveReadTimeout(options)
         })
       );
       return readNativeJson<T>(response, fallbackMessage);
     }
 
-    const response = await fetch(url, {
+    const response = await fetchWithOptionalTimeout(url, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify(body)
-    });
+    }, options);
     return readJson<T>(response, fallbackMessage);
   } catch (error) {
     if (error instanceof ApiClientError) {
@@ -230,7 +259,7 @@ export const patchJson = async <T,>(path: string, body: unknown, fallbackMessage
   }
 };
 
-export const deleteJson = async <T,>(path: string, fallbackMessage?: string) => {
+export const deleteJson = async <T,>(path: string, fallbackMessage?: string, options?: ApiRequestOptions) => {
   try {
     const url = getRequestUrl(path, fallbackMessage);
     if (shouldUseNativeHttp()) {
@@ -238,16 +267,16 @@ export const deleteJson = async <T,>(path: string, fallbackMessage?: string) => 
         CapacitorHttp.delete({
           url,
           responseType: "json",
-          connectTimeout: NATIVE_HTTP_CONNECT_TIMEOUT_MS,
-          readTimeout: NATIVE_HTTP_READ_TIMEOUT_MS
+          connectTimeout: resolveConnectTimeout(options),
+          readTimeout: resolveReadTimeout(options)
         })
       );
       return readNativeJson<T>(response, fallbackMessage);
     }
 
-    const response = await fetch(url, {
+    const response = await fetchWithOptionalTimeout(url, {
       method: "DELETE"
-    });
+    }, options);
     return readJson<T>(response, fallbackMessage);
   } catch (error) {
     if (error instanceof ApiClientError) {

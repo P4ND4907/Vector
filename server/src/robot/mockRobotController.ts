@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import type {
   AiMemoryRecord,
   AutomationControlRecord,
+  BridgeWatchdogStatusRecord,
   CameraImageAsset,
   CameraSnapshotRecord,
   CameraSyncResult,
@@ -9,9 +10,11 @@ import type {
   CommandLogRecord,
   DiagnosticReportRecord,
   DiscoveredRobot,
+  LearnedCommandRecord,
   RepairResultRecord,
   RobotController,
   RobotIntegrationInfo,
+  RoamEventRecord,
   RobotStatus,
   RoamSessionRecord,
   RoutineRecord,
@@ -21,6 +24,10 @@ import type {
   WirePodWeatherConfigRecord,
   VoiceDiagnosticsRecord
 } from "./types.js";
+import {
+  deleteLearnedCommand,
+  upsertLearnedCommand
+} from "../services/learnedCommandsService.js";
 
 const makeId = () => crypto.randomUUID();
 
@@ -222,6 +229,7 @@ export const createMockRobotController = (): RobotController => {
   let roamSessions: RoamSessionRecord[] = [];
   let supportReports: SupportReportRecord[] = [];
   let aiMemory: AiMemoryRecord[] = [];
+  let learnedCommands: LearnedCommandRecord[] = [];
   let commandGaps: CommandGapRecord[] = [];
   const discoveredRobots: DiscoveredRobot[] = [
     {
@@ -246,6 +254,10 @@ export const createMockRobotController = (): RobotController => {
     source: "mock",
     wirePodReachable: false,
     wirePodBaseUrl: settings.savedWirePodEndpoint || "http://127.0.0.1:8080",
+    bridgeProvider: "wirepod",
+    bridgeLabel: "WirePod compatibility bridge",
+    bridgeReachable: false,
+    bridgeBaseUrl: settings.savedWirePodEndpoint || "http://127.0.0.1:8080",
     managedBridge: {
       source: "none",
       available: false,
@@ -261,6 +273,227 @@ export const createMockRobotController = (): RobotController => {
     customEndpoint: settings.customWirePodEndpoint || undefined,
     lastCheckedAt: new Date().toISOString(),
     probes: []
+  };
+  const automationHeartbeatIntervalMs = {
+    patrol: 14_000,
+    explore: 11_000,
+    quiet: 18_000
+  } as const satisfies Record<AutomationControlRecord["behavior"], number>;
+  const roundMetric = (value: number) => Math.round(value * 100) / 100;
+  const pushRoamEvent = (
+    session: RoamSessionRecord,
+    event: RoamEventRecord,
+    summary: string
+  ): RoamSessionRecord => ({
+    ...session,
+    summary,
+    events: [event, ...session.events].slice(0, 18)
+  });
+  const runMockAutomationHeartbeat = () => {
+    if (automationControl.status !== "running") {
+      return;
+    }
+
+    const active = roamSessions.find((session) => session.id === automationControl.activeSessionId);
+    if (!active || active.status !== "running") {
+      return;
+    }
+
+    const lastHeartbeatMs = new Date(automationControl.lastHeartbeatAt || active.startedAt).getTime();
+    const intervalMs = automationHeartbeatIntervalMs[automationControl.behavior];
+    if (Number.isFinite(lastHeartbeatMs) && Date.now() - lastHeartbeatMs < intervalMs) {
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    const batteryDrain =
+      automationControl.behavior === "explore" ? 2 : automationControl.behavior === "quiet" ? 1 : 1;
+    const dataGain =
+      automationControl.dataCollectionEnabled
+        ? automationControl.behavior === "explore"
+          ? 4
+          : 3
+        : 0;
+
+    if (automationControl.safeReturnEnabled && robot.batteryPercent <= automationControl.autoDockThreshold) {
+      const summary = `Mock auto-return triggered at ${robot.batteryPercent}% battery.`;
+      const event: RoamEventRecord = {
+        id: makeId(),
+        createdAt: nowIso,
+        type: "battery",
+        message: `Battery reached ${robot.batteryPercent}%. Mock mode returned to the charger automatically.`,
+        batteryPercent: robot.batteryPercent,
+        dataPointsCollected: active.dataPointsCollected
+      };
+      roamSessions = roamSessions.map((session) =>
+        session.id === active.id
+          ? pushRoamEvent(
+              {
+                ...session,
+                status: "completed",
+                endedAt: nowIso,
+                batteryEnd: robot.batteryPercent
+              },
+              event,
+              summary
+            )
+          : session
+      );
+      automationControl = {
+        ...automationControl,
+        status: "idle",
+        activeSessionId: undefined,
+        lastHeartbeatAt: nowIso
+      };
+      robot = {
+        ...robot,
+        isDocked: true,
+        isCharging: true,
+        mood: "charging",
+        currentActivity: "Mock auto-returning to the charger.",
+        lastSeen: nowIso
+      };
+      pushLog(makeLog("automation-auto-dock", { sessionId: active.id }, "success", summary));
+      return;
+    }
+
+    if (robot.isDocked) {
+      const chargeGain = robot.isCharging ? 2 : 1;
+      const nextBattery = Math.min(100, robot.batteryPercent + chargeGain);
+      const summary = "Mock roam is armed, but Vector is still on the charger.";
+      const event: RoamEventRecord = {
+        id: makeId(),
+        createdAt: nowIso,
+        type: "dock",
+        message: `Mock roam heartbeat checked ${automationControl.targetArea}, but the robot is still docked.`,
+        batteryPercent: nextBattery,
+        dataPointsCollected: active.dataPointsCollected + Math.max(1, dataGain - 1)
+      };
+      roamSessions = roamSessions.map((session) =>
+        session.id === active.id
+          ? pushRoamEvent(
+              {
+                ...session,
+                dataPointsCollected: session.dataPointsCollected + Math.max(1, dataGain - 1)
+              },
+              event,
+              summary
+            )
+          : session
+      );
+      automationControl = {
+        ...automationControl,
+        lastHeartbeatAt: nowIso
+      };
+      robot = {
+        ...robot,
+        batteryPercent: nextBattery,
+        currentActivity: summary,
+        lastSeen: nowIso
+      };
+      return;
+    }
+
+    const stepIndex = active.commandsIssued % 4;
+    let eventType: RoamEventRecord["type"] = "movement";
+    let summary = "";
+    let distanceGain = 0;
+    let snapshotGain = 0;
+
+    if (automationControl.behavior === "explore") {
+      if (stepIndex === 0) {
+        summary = `Mock explore mode pushed into a new route in ${automationControl.targetArea}.`;
+        distanceGain = 0.52;
+      } else if (stepIndex === 1) {
+        summary = "Mock explore mode pivoted to a fresh angle.";
+        distanceGain = 0.14;
+      } else if (stepIndex === 2) {
+        summary = "Mock explore mode paused for a curious scan.";
+        distanceGain = 0.05;
+        eventType = "vision";
+      } else {
+        summary = `Mock explore mode pressed deeper into ${automationControl.targetArea}.`;
+        distanceGain = 0.46;
+      }
+    } else if (automationControl.behavior === "quiet") {
+      if (stepIndex === 0) {
+        summary = "Mock quiet patrol drifted forward softly.";
+        distanceGain = 0.12;
+      } else if (stepIndex === 1) {
+        summary = "Mock quiet patrol made a small lookout check.";
+        distanceGain = 0.03;
+        eventType = "vision";
+      } else if (stepIndex === 2) {
+        summary = "Mock quiet patrol adjusted course gently.";
+        distanceGain = 0.1;
+      } else {
+        summary = "Mock quiet patrol paused to listen.";
+        distanceGain = 0;
+        eventType = "status";
+      }
+    } else {
+      if (stepIndex === 0) {
+        summary = `Mock patrol sweep forward through ${automationControl.targetArea}.`;
+        distanceGain = 0.32;
+      } else if (stepIndex === 1) {
+        summary = `Mock patrol pivoted left to re-check ${automationControl.targetArea}.`;
+        distanceGain = 0.1;
+      } else if (stepIndex === 2) {
+        summary = `Mock patrol continued through ${automationControl.targetArea}.`;
+        distanceGain = 0.32;
+      } else {
+        summary = "Mock patrol visual sweep complete.";
+        distanceGain = 0.05;
+        eventType = "vision";
+      }
+    }
+
+    if (
+      automationControl.captureSnapshots &&
+      (active.commandsIssued + 1) % (automationControl.behavior === "explore" ? 3 : 4) === 0
+    ) {
+      snapshotGain = 1;
+      summary = `${summary} Mock snapshot captured for the session log.`;
+      eventType = "vision";
+    }
+
+    const nextBattery = Math.max(5, robot.batteryPercent - batteryDrain);
+    const nextDataPoints = active.dataPointsCollected + dataGain + (snapshotGain ? 2 : 0);
+    const event: RoamEventRecord = {
+      id: makeId(),
+      createdAt: nowIso,
+      type: eventType,
+      message: summary,
+      batteryPercent: nextBattery,
+      dataPointsCollected: nextDataPoints
+    };
+
+    roamSessions = roamSessions.map((session) =>
+      session.id === active.id
+        ? pushRoamEvent(
+            {
+              ...session,
+              distanceMeters: roundMetric(session.distanceMeters + distanceGain),
+              commandsIssued: session.commandsIssued + 1,
+              snapshotsTaken: session.snapshotsTaken + snapshotGain,
+              dataPointsCollected: nextDataPoints
+            },
+            event,
+            summary
+          )
+        : session
+    );
+    automationControl = {
+      ...automationControl,
+      lastHeartbeatAt: nowIso
+    };
+    robot = {
+      ...robot,
+      batteryPercent: nextBattery,
+      mood: "focused",
+      currentActivity: summary,
+      lastSeen: nowIso
+    };
   };
   let wirePodWeatherConfig: WirePodWeatherConfigRecord = {
     enable: false,
@@ -279,14 +512,32 @@ export const createMockRobotController = (): RobotController => {
   };
 
   return {
-    getStatus: () => robot,
+    getStatus: () => {
+      runMockAutomationHeartbeat();
+      return robot;
+    },
     getIntegrationInfo: () => integrationInfo,
+    getBridgeWatchdogStatus: (): BridgeWatchdogStatusRecord => ({
+      observedAt: new Date().toISOString(),
+      overallStatus: "healthy",
+      issueCode: "mock-mode",
+      summary: "Mock mode is active, so the live bridge watchdog is paused.",
+      recommendedAction: "Turn off mock mode when you are ready to test the real bridge.",
+      bridgeReachable: false,
+      robotReachable: true,
+      autoRecoveryAvailable: false,
+      autoRecoveryLikelyHelpful: false,
+      connTimerEvents: 0,
+      reconnectEvents: 0,
+      recentEvidence: ["Mock mode is active."]
+    }),
     getSettings: () => settings,
     updateSettings: (patch) => {
       settings = { ...settings, ...patch, mockMode: true };
       integrationInfo = {
         ...integrationInfo,
         wirePodBaseUrl: settings.savedWirePodEndpoint || settings.customWirePodEndpoint || "http://127.0.0.1:8080",
+        bridgeBaseUrl: settings.savedWirePodEndpoint || settings.customWirePodEndpoint || "http://127.0.0.1:8080",
         autoDetectEnabled: settings.autoDetectWirePod,
         reconnectOnStartup: settings.reconnectOnStartup,
         customEndpoint: settings.customWirePodEndpoint || undefined,
@@ -452,7 +703,7 @@ export const createMockRobotController = (): RobotController => {
       port: "443",
       discoveredRobotCount: discoveredRobots.length,
       needsRobotPairing: false,
-      recommendedNextStep: "Turn off mock mode when you are ready to set up the real local WirePod bridge."
+      recommendedNextStep: "Turn off mock mode when you are ready to set up the real local bridge."
     }),
     finishWirePodSetup: ({ language, connectionMode, port }): WirePodSetupStatusRecord => ({
       reachable: false,
@@ -518,6 +769,40 @@ export const createMockRobotController = (): RobotController => {
       }
 
       return aiMemory;
+    },
+    getLearnedCommands: () => learnedCommands,
+    saveLearnedCommand: ({ phrase, targetPrompt }) => {
+      const nextLearnedCommands = upsertLearnedCommand(learnedCommands, phrase, targetPrompt);
+      learnedCommands = nextLearnedCommands.commands;
+      pushLog(
+        makeLog(
+          "learned-command-save",
+          {
+            phrase: nextLearnedCommands.record.phrase,
+            targetPrompt: nextLearnedCommands.record.targetPrompt
+          },
+          "success",
+          `Mock mode saved learned phrase ${nextLearnedCommands.record.phrase}.`
+        )
+      );
+      return nextLearnedCommands.record;
+    },
+    deleteLearnedCommand: ({ phrase }) => {
+      const nextLearnedCommands = deleteLearnedCommand(learnedCommands, phrase);
+      learnedCommands = nextLearnedCommands.commands;
+      if (nextLearnedCommands.record) {
+        pushLog(
+          makeLog(
+            "learned-command-delete",
+            {
+              phrase: nextLearnedCommands.record.phrase
+            },
+            "success",
+            `Mock mode forgot learned phrase ${nextLearnedCommands.record.phrase}.`
+          )
+        );
+      }
+      return nextLearnedCommands.record;
     },
     getCommandGaps: () => commandGaps,
     recordCommandGap: ({ source, prompt, normalizedPrompt, category, note, suggestedArea, heardAt, matchedIntent }) => {

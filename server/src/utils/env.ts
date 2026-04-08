@@ -1,10 +1,15 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 const loadLocalEnvFile = () => {
   const configuredCandidate = process.env.VECTOR_ENV_FILE?.trim();
   const candidates = [
     ...(configuredCandidate ? [configuredCandidate] : []),
+    path.resolve(serverRoot, ".env.local"),
+    path.resolve(serverRoot, "../.env.local"),
     path.resolve(process.cwd(), "server/.env.local"),
     path.resolve(process.cwd(), ".env.local")
   ];
@@ -50,10 +55,14 @@ export const buildEnv = () => {
     mode: process.env.NODE_ENV ?? "development",
     openaiApiKey: process.env.OPENAI_API_KEY ?? "",
     openaiModel: process.env.OPENAI_MODEL ?? "gpt-4.1-mini",
+    supportEmail: process.env.SUPPORT_EMAIL ?? "",
+    stripePaymentLinkPro: process.env.STRIPE_PAYMENT_LINK_PRO ?? "",
+    stripePaymentLinkSetup: process.env.STRIPE_PAYMENT_LINK_SETUP ?? "",
+    stripePaymentLinkStudio: process.env.STRIPE_PAYMENT_LINK_STUDIO ?? "",
     wirePodBaseUrl: process.env.WIREPOD_BASE_URL ?? "http://127.0.0.1:8080",
     wirePodTimeoutMs: Number(process.env.WIREPOD_TIMEOUT_MS ?? 4000),
     dataFilePath:
       process.env.VECTOR_DATA_FILE ??
-      path.resolve(process.cwd(), "server/data/vector-control-hub.local.json")
+      path.resolve(serverRoot, "data/vector-control-hub.local.json")
   };
 };

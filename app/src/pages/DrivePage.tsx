@@ -38,13 +38,13 @@ export function DrivePage() {
           <div className="eyebrow">Controls</div>
           <CardTitle>Main live controls for movement, wake, speech, dock, and audio.</CardTitle>
           <CardDescription>
-            This is the practical control surface for everyday use, with WirePod staying hidden behind the backend.
+            This is the practical control surface for everyday use, with the local bridge staying hidden behind the backend.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="flex flex-wrap gap-2">
-            <Badge>{integration.mockMode ? "Mock mode" : "WirePod live path"}</Badge>
-            <Badge>{robot.isConnected ? "Robot online" : "Vector brain offline"}</Badge>
+            <Badge>{integration.mockMode ? "Mock mode" : "Local bridge live path"}</Badge>
+            <Badge>{robot.isConnected ? "Robot online" : "Local bridge offline"}</Badge>
             <Badge>{robot.systemStatus}</Badge>
           </div>
 
@@ -169,7 +169,7 @@ export function DrivePage() {
         <Card>
           <CardHeader>
             <CardTitle>Volume</CardTitle>
-            <CardDescription>WirePod volume is a simple 0-5 scale so it stays predictable.</CardDescription>
+            <CardDescription>The local bridge volume is a simple 0-5 scale so it stays predictable.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">

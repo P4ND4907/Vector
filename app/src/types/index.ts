@@ -1,5 +1,6 @@
 export type ConnectionState = "connected" | "connecting" | "disconnected" | "error";
 export type RobotConnectionSource = "mock" | "wirepod";
+export type LocalBridgeProvider = "wirepod";
 export type RobotMood = "ready" | "curious" | "playful" | "charging" | "sleepy" | "focused";
 export type NotificationLevel = "info" | "success" | "warning";
 export type TriggerType = "schedule" | "interval" | "battery-low" | "disconnect" | "manual";
@@ -17,6 +18,8 @@ export type RoamSessionStatus = "running" | "paused" | "completed";
 export type AutomationStatus = "idle" | "running" | "paused";
 export type SystemStatus = "ready" | "charging" | "docked" | "busy" | "offline" | "error";
 export type LiveUpdateMode = "polling";
+export type MonetizationPlanId = "free" | "pro" | "setup" | "studio";
+export type MonetizationAccessTier = Extract<MonetizationPlanId, "free" | "pro">;
 
 export interface OptionalModule {
   enabled: boolean;
@@ -90,6 +93,8 @@ export interface WirePodProbe {
   error?: string;
 }
 
+export type LocalBridgeProbe = WirePodProbe;
+
 export type ManagedBridgeSource = "bundled" | "external" | "none";
 
 export interface ManagedBridgeStatus {
@@ -108,7 +113,10 @@ export interface WirePodWeatherConfig {
   unit?: string;
 }
 
+export type LocalBridgeWeatherConfig = WirePodWeatherConfig;
+
 export type WirePodConnectionMode = "escape-pod" | "ip" | "unknown";
+export type LocalBridgeConnectionMode = WirePodConnectionMode;
 
 export interface WirePodSetupStatus {
   reachable: boolean;
@@ -122,16 +130,52 @@ export interface WirePodSetupStatus {
   recommendedNextStep: string;
 }
 
+export type LocalBridgeSetupStatus = WirePodSetupStatus;
+
 export interface MobileBackendTarget {
   label: string;
   url: string;
   kind: "localhost" | "lan";
 }
 
+export type BluetoothDiscoveryConfidence = "likely" | "possible" | "unknown";
+
+export interface BluetoothDiscoveryStatus {
+  supported: boolean;
+  platform: "android" | "ios" | "web" | "unknown";
+  bluetoothEnabled: boolean;
+  locationEnabled: boolean | null;
+  ready: boolean;
+  note: string;
+}
+
+export interface BluetoothDiscoveryCandidate {
+  id: string;
+  deviceId: string;
+  name: string;
+  localName?: string;
+  rssi?: number;
+  bonded: boolean;
+  confidence: BluetoothDiscoveryConfidence;
+  note: string;
+}
+
+export interface BluetoothScanSnapshot {
+  devices: BluetoothDiscoveryCandidate[];
+  totalDetected: number;
+  likelyCount: number;
+  scannedAt: string;
+  note: string;
+}
+
 export interface IntegrationStatus {
   source: RobotConnectionSource;
   wirePodReachable: boolean;
   wirePodBaseUrl: string;
+  bridgeProvider?: LocalBridgeProvider;
+  bridgeLabel?: string;
+  bridgeReachable?: boolean;
+  bridgeBaseUrl?: string;
   managedBridge: ManagedBridgeStatus;
   selectedSerial?: string;
   note?: string;
@@ -253,6 +297,40 @@ export interface DiagnosticsSnapshot {
   latestSuccessfulCommand?: CommandLog;
   latestFailedCommand?: CommandLog;
   troubleshooting: string[];
+  bridgeWatchdog?: BridgeWatchdogStatus;
+}
+
+export interface VoiceDiagnostics {
+  wakeWordMode: "hey-vector" | "alexa" | "unknown";
+  locale: string;
+  volume: number;
+  lastIntent?: string;
+  lastTranscription?: string;
+  lastHeardAt?: string;
+  status: "healthy" | "attention" | "critical";
+  summary: string;
+  troubleshooting: string[];
+}
+
+export interface BridgeWatchdogStatus {
+  observedAt: string;
+  overallStatus: "healthy" | "attention" | "critical";
+  issueCode:
+    | "mock-mode"
+    | "bridge-offline"
+    | "sdk-session-timeout"
+    | "robot-routes-quiet"
+    | "reconnect-loop"
+    | "stable";
+  summary: string;
+  recommendedAction: string;
+  bridgeReachable: boolean;
+  robotReachable: boolean;
+  autoRecoveryAvailable: boolean;
+  autoRecoveryLikelyHelpful: boolean;
+  connTimerEvents: number;
+  reconnectEvents: number;
+  recentEvidence: string[];
 }
 
 export interface RepairStep {
@@ -279,6 +357,29 @@ export interface SupportReport {
   robotName: string;
   integrationNote?: string;
   repairResult: RepairResult;
+}
+
+export interface CommandGap {
+  id: string;
+  createdAt: string;
+  source: "ai" | "voice";
+  prompt: string;
+  normalizedPrompt: string;
+  category: "unsupported" | "missing-integration" | "unmatched" | "no-audio";
+  note: string;
+  suggestedArea?: string;
+  heardAt?: string;
+  matchedIntent?: string;
+}
+
+export interface SupportBundle {
+  generatedAt: string;
+  diagnosticsSnapshot: DiagnosticsSnapshot;
+  voiceDiagnostics: VoiceDiagnostics;
+  supportReports: SupportReport[];
+  commandGaps: CommandGap[];
+  settings: AppSettings;
+  bridgeWatchdog?: BridgeWatchdogStatus;
 }
 
 export interface RoamEvent {
@@ -335,6 +436,7 @@ export interface AppSettings {
   theme: ThemeMode;
   colorTheme: ColorTheme;
   appBackendUrl: string;
+  planAccess: MonetizationAccessTier;
   advancedMode: boolean;
   autoReconnect: boolean;
   startupBehavior: StartupBehavior;
@@ -390,6 +492,15 @@ export interface AiCommandHistoryItem {
   status: "success" | "error";
   createdAt: string;
   resultMessage: string;
+}
+
+export interface LearnedCommand {
+  phrase: string;
+  normalizedPhrase: string;
+  targetPrompt: string;
+  normalizedTargetPrompt: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type VectorCommandCatalogCategory =
@@ -470,4 +581,41 @@ export interface ToastItem {
   title: string;
   description: string;
   level: NotificationLevel;
+}
+
+export type MonetizationPlanStatus = "live" | "needs-config" | "coming-soon";
+export type MonetizationPlanCadence = "free" | "monthly" | "one-time" | "custom";
+
+export interface MonetizationPlan {
+  id: MonetizationPlanId;
+  name: string;
+  priceLabel: string;
+  cadence: MonetizationPlanCadence;
+  summary: string;
+  highlights: string[];
+  status: MonetizationPlanStatus;
+  ctaLabel?: string;
+  checkoutUrl?: string;
+  desktopWebOnly?: boolean;
+  note?: string;
+}
+
+export interface MonetizationStatus {
+  desktopCheckoutReady: boolean;
+  supportEmailConfigured: boolean;
+  androidPlayBillingReady: boolean;
+  hostedAdsReady: boolean;
+  checkoutLockedToDesktop: boolean;
+}
+
+export interface MonetizationOverview {
+  headline: string;
+  summary: string;
+  supportEmail?: string;
+  plans: MonetizationPlan[];
+  freeKeepsPeople: string[];
+  proReasons: string[];
+  retentionHooks: string[];
+  nextMoves: string[];
+  status: MonetizationStatus;
 }

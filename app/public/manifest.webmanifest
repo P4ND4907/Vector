@@ -1,9 +1,12 @@
 {
   "name": "Vector Control Hub",
   "short_name": "Vector Hub",
+  "id": "/",
   "description": "A fast local-first control center for Vector robot setup, status, commands, and routines.",
   "start_url": "/",
   "scope": "/",
+  "lang": "en-US",
+  "dir": "ltr",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#060816",

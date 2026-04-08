@@ -22,8 +22,8 @@ import { themePresets } from "@/lib/themes";
 import { useAppStore } from "@/store/useAppStore";
 import type { MobileBackendTarget, WirePodWeatherConfig } from "@/types";
 
-const downloadText = (filename: string, text: string) => {
-  const blob = new Blob([text], { type: "application/json" });
+const downloadJson = (filename: string, value: unknown) => {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -61,8 +61,17 @@ export function SettingsPage() {
     key: "",
     unit: ""
   });
-  const [weatherStatus, setWeatherStatus] = useState("Checking WirePod weather setup...");
+  const [weatherStatus, setWeatherStatus] = useState("Checking local bridge weather setup...");
   const [weatherSaving, setWeatherSaving] = useState(false);
+  const [supportBundleSaving, setSupportBundleSaving] = useState(false);
+  const [supportBundleStatus, setSupportBundleStatus] = useState(
+    "Download one JSON bundle with live diagnostics, saved reports, and missed AI or voice commands."
+  );
+  const mobileShellRuntime = isMobileShellLikeRuntime();
+  const normalizedAppBackendUrl = appBackendUrl.trim();
+  const mobileLoopbackBackendSelected =
+    mobileShellRuntime &&
+    /^https?:\/\/(?:localhost|127(?:\.\d{1,3}){3})(?::\d+)?(?:\/|$)/i.test(normalizedAppBackendUrl);
 
   useEffect(() => {
     setCustomEndpoint(settings.customWirePodEndpoint);
@@ -89,7 +98,7 @@ export function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [settings.appBackendUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,7 +114,7 @@ export function SettingsPage() {
         setWeatherStatus(
           config.enable
             ? `Wake-word weather is configured through ${config.provider || "your selected provider"}.`
-            : "Wake-word weather is off in WirePod, so Vector will say the weather API is not configured."
+            : "Wake-word weather is off in the local bridge, so Vector will say the weather API is not configured."
         );
       })
       .catch(() => {
@@ -113,13 +122,13 @@ export function SettingsPage() {
           return;
         }
 
-        setWeatherStatus("WirePod weather settings could not be read right now.");
+        setWeatherStatus("Local bridge weather settings could not be read right now.");
       });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [settings.appBackendUrl, integration.wirePodReachable]);
 
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -136,17 +145,19 @@ export function SettingsPage() {
       <Card>
         <CardHeader>
           <div className="eyebrow">Settings</div>
-          <CardTitle>Make WirePod invisible while keeping control in one place.</CardTitle>
+          <CardTitle>Keep setup simple and the important controls in one place.</CardTitle>
           <CardDescription>
-            Endpoint detection, serial targeting, mock mode, reconnect behavior, and UI preferences all live here.
+            Backend target, saved robot, reconnect, and interface preferences all live here.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-4">
-              <div className="text-sm text-muted-foreground">Current endpoint</div>
+              <div className="text-sm text-muted-foreground">Desktop local bridge endpoint</div>
               <div className="mt-2 text-lg font-semibold">{integration.wirePodBaseUrl}</div>
-              <p className="mt-2 text-sm text-muted-foreground">{integration.note || "No endpoint note yet."}</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {integration.note || "No endpoint note yet."} This is the robot bridge your desktop backend is using after the mobile app reaches it.
+              </p>
             </div>
             <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-4">
               <div className="text-sm text-muted-foreground">Selected serial</div>
@@ -163,23 +174,23 @@ export function SettingsPage() {
               Mobile foundation
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              The current desktop app assumes the backend lives on the same machine. This setting lets a future mobile shell point at a desktop or LAN backend like <span className="font-medium text-foreground">http://192.168.x.x:8787</span>.
+              Point the phone at your desktop backend, usually something like <span className="font-medium text-foreground">http://192.168.x.x:8787</span>.
             </p>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <div className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-black)] p-4">
                 <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Current app backend</div>
                 <div className="mt-2 break-all text-sm font-semibold">{getApiBaseUrl()}</div>
                 <div className="mt-2 text-xs text-muted-foreground">
-                  {isMobileShellLikeRuntime()
-                    ? "This runtime looks like a mobile shell, so a manual backend target is expected."
-                    : "Desktop and browser launches can still use the automatic same-device backend target."}
+                  {mobileShellRuntime
+                    ? "Mobile shells usually need a saved desktop backend."
+                    : "Desktop and browser launches can keep using the automatic local target."}
                 </div>
               </div>
               <div className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-black)] p-4">
                 <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Desktop default</div>
                 <div className="mt-2 break-all text-sm font-semibold">{getDefaultAppBackendUrl()}</div>
                 <div className="mt-2 text-xs text-muted-foreground">
-                  Leave the field blank to keep using the automatic desktop target.
+                  Leave this blank if the desktop auto-target is already right.
                 </div>
               </div>
             </div>
@@ -190,9 +201,14 @@ export function SettingsPage() {
                 placeholder="http://192.168.x.x:8787"
                 onChange={(event) => setAppBackendUrl(event.target.value)}
               />
+              {mobileLoopbackBackendSelected ? (
+                <div className="text-xs text-amber-300">
+                  `127.0.0.1` and `localhost` point back to the phone itself. On a real phone, save your desktop LAN address instead.
+                </div>
+              ) : null}
             </div>
             <div className="mt-4 space-y-2">
-              <div className="text-sm text-muted-foreground">Suggested backend URLs from this computer</div>
+              <div className="text-sm text-muted-foreground">Suggested backend URLs</div>
               {mobileBackendTargets.length ? (
                 <div className="grid gap-2">
                   {mobileBackendTargets.map((target) => (
@@ -214,7 +230,7 @@ export function SettingsPage() {
                 </div>
               ) : (
                 <div className="rounded-2xl border border-dashed border-[var(--surface-border)] p-4 text-sm text-muted-foreground">
-                  No LAN backend suggestions are available yet. Start the desktop/backend stack on this machine first, then reopen Settings.
+                  No desktop backend was found yet. Start the desktop app on this machine, then reopen Settings.
                 </div>
               )}
             </div>
@@ -248,7 +264,7 @@ export function SettingsPage() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm text-muted-foreground">Custom WirePod endpoint override</label>
+            <label className="text-sm text-muted-foreground">Custom local bridge endpoint override</label>
             <Input
               value={customEndpoint}
               placeholder="http://192.168.x.x:8080"
@@ -286,7 +302,7 @@ export function SettingsPage() {
           <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-4">
             <div className="text-sm font-semibold">Voice weather setup</div>
             <div className="mt-1 text-xs text-muted-foreground">
-              Typed weather in the app works without an external key. Wake-word weather on Vector still depends on WirePod having a weather provider API key.
+              Typed weather in the app works without an external key. Wake-word weather on Vector still depends on the local bridge having a weather provider API key.
             </div>
             <div className="mt-3 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-black)] px-4 py-3 text-sm text-muted-foreground">
               {weatherStatus}
@@ -340,13 +356,13 @@ export function SettingsPage() {
                     setWeatherStatus(
                       nextConfig.enable
                         ? `Wake-word weather is configured through ${nextConfig.provider || "your selected provider"}.`
-                        : "Wake-word weather is off in WirePod, so Vector will say the weather API is not configured."
+                        : "Wake-word weather is off in the local bridge, so Vector will say the weather API is not configured."
                     );
                   } catch (error) {
                     setWeatherStatus(
                       error instanceof Error
                         ? error.message
-                        : "WirePod weather settings could not be saved."
+                        : "Local bridge weather settings could not be saved."
                     );
                   } finally {
                     setWeatherSaving(false);
@@ -363,7 +379,7 @@ export function SettingsPage() {
             <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold">Auto-detect WirePod</div>
+                  <div className="text-sm font-semibold">Auto-detect local bridge</div>
                   <div className="text-xs text-muted-foreground">Try the default local endpoints automatically.</div>
                 </div>
                 <Switch
@@ -408,7 +424,7 @@ export function SettingsPage() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold">Mock mode</div>
-                  <div className="text-xs text-muted-foreground">Keep the app testable without WirePod or the robot.</div>
+                  <div className="text-xs text-muted-foreground">Keep the app testable without the local bridge or the robot.</div>
                 </div>
                 <Switch
                   checked={settings.mockMode}
@@ -508,7 +524,11 @@ export function SettingsPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => downloadText("vector-control-hub-settings.json", exportState())}>
+            <Button
+              onClick={() =>
+                downloadJson("vector-control-hub-settings.json", JSON.parse(exportState()))
+              }
+            >
               <Download className="h-4 w-4" />
               Export settings
             </Button>
@@ -562,7 +582,7 @@ export function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-4 text-sm text-muted-foreground">
-              Quick repair can safely try known local fixes like starting WirePod, refreshing the robot link, and re-applying voice defaults. It will not silently change advanced robot settings or claim a repair worked when it did not.
+              Quick repair can safely try known local fixes like starting the local bridge, refreshing the robot link, and re-applying voice defaults. It will not silently change advanced robot settings or claim a repair worked when it did not.
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -570,7 +590,47 @@ export function SettingsPage() {
                 <Wrench className="h-4 w-4" />
                 {supportState.status === "loading" ? "Running quick repair..." : "Run quick repair"}
               </Button>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  setSupportBundleSaving(true);
+
+                  try {
+                    const currentState = useAppStore.getState();
+                    const supportBundle = await robotService.getSupportBundle(currentState);
+                    const exportedAt = new Date().toISOString();
+
+                    downloadJson(
+                      `vector-support-bundle-${exportedAt.replace(/[:.]/g, "-")}.json`,
+                      {
+                        exportedAt,
+                        apiBaseUrl: getApiBaseUrl(),
+                        appSnapshot: JSON.parse(exportState()),
+                        supportBundle
+                      }
+                    );
+
+                    setSupportBundleStatus(
+                      `Support bundle downloaded with ${supportBundle.commandGaps.length} command gaps, ${supportBundle.supportReports.length} saved reports, and ${supportBundle.diagnosticsSnapshot.logs.length} recent log entries.`
+                    );
+                  } catch (error) {
+                    setSupportBundleStatus(
+                      error instanceof Error
+                        ? error.message
+                        : "Support bundle download failed."
+                    );
+                  } finally {
+                    setSupportBundleSaving(false);
+                  }
+                }}
+                disabled={supportBundleSaving}
+              >
+                <Download className="h-4 w-4" />
+                {supportBundleSaving ? "Building support bundle..." : "Download support bundle"}
+              </Button>
             </div>
+
+            <p className="text-sm text-muted-foreground">{supportBundleStatus}</p>
 
             <div className="grid gap-4">
               <div className="space-y-2">

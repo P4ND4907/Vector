@@ -1,14 +1,71 @@
 import { robotService } from "@/services/robotService";
+import { mobileRuntimeNeedsManualBackendUrl } from "@/lib/runtime-target";
+import { selectRobotSerial } from "@/lib/robot-serial";
 
 import type { AppState, AppStoreGet, AppStoreSet } from "./app-store-types";
 import {
   appendLog,
   appendToast,
   attachRoamSimulation,
+  attachTelemetrySubscription,
   createNotification,
+  mergePersistedState,
   runAction,
   stopRoamSimulation
 } from "./app-store-utils";
+
+const mergeBootstrapSnapshot = (
+  currentState: AppState,
+  snapshot: AppState,
+  settingsOverride: AppState["settings"]
+): AppState => {
+  const resolvedRobotSerial = selectRobotSerial(
+    snapshot.settings.robotSerial,
+    snapshot.integration.selectedSerial,
+    snapshot.robot.serial,
+    currentState.settings.robotSerial
+  );
+  const merged = mergePersistedState(
+    {
+      ...currentState,
+      ...snapshot,
+      settings: {
+        ...currentState.settings,
+        ...snapshot.settings,
+        ...settingsOverride
+      }
+    },
+    currentState
+  );
+
+  return {
+    ...merged,
+    robot: {
+      ...snapshot.robot,
+      nickname:
+        settingsOverride.robotNickname ||
+        snapshot.robot.nickname ||
+        snapshot.robot.name
+    },
+    integration: snapshot.integration,
+    settings: {
+      ...merged.settings,
+      ...snapshot.settings,
+      ...settingsOverride,
+      theme: merged.settings.theme,
+      colorTheme: merged.settings.colorTheme,
+      appBackendUrl: settingsOverride.appBackendUrl || merged.settings.appBackendUrl,
+      robotNickname: settingsOverride.robotNickname || merged.settings.robotNickname,
+      robotSerial: resolvedRobotSerial || merged.settings.robotSerial
+    },
+    savedProfiles: snapshot.savedProfiles.length ? snapshot.savedProfiles : merged.savedProfiles,
+    routines: snapshot.routines,
+    logs: snapshot.logs,
+    availableRobots: snapshot.availableRobots,
+    supportReports: snapshot.supportReports,
+    snapshots: snapshot.snapshots.length ? snapshot.snapshots : merged.snapshots
+  };
+};
 
 export const createSystemActions = (
   set: AppStoreSet,
@@ -183,9 +240,83 @@ export const createSystemActions = (
             result.settings.robotNickname ||
             (result.robot ?? current.robot).nickname ||
             (result.robot ?? current.robot).name,
-          serial: result.settings.robotSerial || (result.robot ?? current.robot).serial
+          serial: selectRobotSerial(
+            result.settings.robotSerial,
+            result.integration.selectedSerial,
+            (result.robot ?? current.robot).serial
+          )
         }
       }));
+
+      const nextSettings = {
+        ...get().settings
+      };
+      const shouldRefreshBackendConnection = Boolean(
+        patch.appBackendUrl && nextSettings.appBackendUrl && !nextSettings.mockMode
+      );
+
+      if (shouldRefreshBackendConnection) {
+        try {
+          const snapshot = await robotService.bootstrap();
+          const refreshedState = mergeBootstrapSnapshot(
+            get(),
+            {
+              ...get(),
+              ...snapshot
+            },
+            nextSettings
+          );
+
+          set(() => ({
+            ...refreshedState,
+            initialized: true,
+            telemetryActive: true,
+            robot: {
+              ...refreshedState.robot,
+              nickname:
+                refreshedState.settings.robotNickname ||
+                refreshedState.robot.nickname ||
+                refreshedState.robot.name
+            }
+          }));
+
+          attachTelemetrySubscription(get, set);
+
+          if (refreshedState.automationControl.status === "running") {
+            attachRoamSimulation(get, set);
+          }
+
+          return refreshedState.integration.note || "Backend URL saved and desktop backend is online.";
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "The desktop backend did not answer after saving the new URL.";
+
+          set((current) => ({
+            integration: {
+              ...current.integration,
+              note: `Backend URL saved, but ${message}`
+            },
+            robot: {
+              ...current.robot,
+              currentActivity:
+                current.robot.currentActivity || "Waiting for the desktop backend."
+            }
+          }));
+
+          return `Backend URL saved, but ${message}`;
+        }
+      }
+
+      if (
+        get().initialized &&
+        !get().telemetryActive &&
+        (result.settings.mockMode || !mobileRuntimeNeedsManualBackendUrl())
+      ) {
+        attachTelemetrySubscription(get, set);
+      }
+
       return result.integration.note || "Settings updated.";
     });
   },

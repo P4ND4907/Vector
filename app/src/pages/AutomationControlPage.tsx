@@ -6,11 +6,14 @@ import {
   RoamSetupCard,
   StoredRoamDataCard
 } from "@/components/automation-control/automation-control-sections";
+import { FeatureGateCard } from "@/components/monetization/FeatureGateCard";
+import { isProAccessActive } from "@/lib/monetization-access";
 import { getBatteryState } from "@/lib/robot-state";
 import { useAppStore } from "@/store/useAppStore";
 
 export function AutomationControlPage() {
   const robot = useAppStore((state) => state.robot);
+  const settings = useAppStore((state) => state.settings);
   const roamSessions = useAppStore((state) => state.roamSessions);
   const automationControl = useAppStore((state) => state.automationControl);
   const automationState = useAppStore((state) => state.actionStates.automation);
@@ -35,6 +38,7 @@ export function AutomationControlPage() {
     [roamSessions]
   );
   const batteryState = getBatteryState(robot);
+  const proAccess = isProAccessActive(settings);
 
   return (
     <div className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
@@ -44,16 +48,26 @@ export function AutomationControlPage() {
           automationState={automationState}
           roamSessionsCount={roamSessions.length}
           storedDataPoints={storedDataPoints}
+          controlsDisabled={!proAccess}
+          controlMessage={
+            !proAccess
+              ? "Free keeps manual controls, connection repair, and robot status open. Companion Pro unlocks patrol runs, pause and resume controls, and stored autonomous roam tools."
+              : undefined
+          }
           onStartRoam={startRoam}
           onPauseRoam={pauseRoam}
           onResumeRoam={resumeRoam}
           onStopRoam={stopRoam}
           onReturnToDock={returnToDock}
         />
-        <RoamSetupCard
-          automationControl={automationControl}
-          onUpdateAutomationControl={updateAutomationControl}
-        />
+        {proAccess ? (
+          <RoamSetupCard
+            automationControl={automationControl}
+            onUpdateAutomationControl={updateAutomationControl}
+          />
+        ) : (
+          <FeatureGateCard feature="advanced-automation" />
+        )}
       </div>
 
       <div className="grid gap-4">

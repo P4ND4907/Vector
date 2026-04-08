@@ -10,6 +10,30 @@ const normalize = (value: string) =>
     .replace(/[^\w\s]/g, " ")
     .replace(/\s+/g, " ");
 
+const stripCommandPreamble = (value: string) => {
+  let current = value.trim();
+
+  while (current) {
+    const next = current
+      .replace(/^(?:(?:hey|okay|ok|yo)\s+)?vector\s+/i, "")
+      .replace(/^(?:assistant|robot)\s+/i, "")
+      .replace(/^(?:can|could|would|will)\s+you\s+/i, "")
+      .replace(/^(?:(?:please|kindly)\s+)+/i, "")
+      .trim();
+
+    if (next === current) {
+      return current;
+    }
+
+    current = next;
+  }
+
+  return current;
+};
+
+export const normalizeVectorCommandInput = (value: string) =>
+  stripCommandPreamble(normalize(value));
+
 const buildAction = (
   type: ParsedAiAction["type"],
   label: string,
@@ -137,7 +161,7 @@ const extractDurationMs = (value: string) => {
 };
 
 const LEGACY_HELP_TEXT =
-  "Try hello, what time is it, what's the weather, take a selfie, roll a die, play a trick, fetch your cube, drive forward, go dock, run diagnostics, or my name is followed by your name.";
+  "Try weather, battery, diagnostics, go dock, start patrol, snore, tell a joke, or teach me a phrase like movie time means play blackjack.";
 
 const buildPlaceholder = (
   commandKey: string,
@@ -162,19 +186,19 @@ const buildStockIntent = (
   });
 
 export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
-  const normalized = normalize(segment);
+  const normalized = normalizeVectorCommandInput(segment);
 
   if (!normalized) {
     return null;
   }
 
-  if (exactAlias(normalized, ["hello", "hi", "hey"])) {
+  if (exactAlias(normalized, ["hello", "hi", "hey", "hiya", "hello there"])) {
     return buildStockIntent(
       "hello",
       "legacy",
       "Play the stock hello greeting",
       "intent_greeting_hello",
-      "Hello human. Systems online."
+      "Hey there. Systems online and feeling sharp."
     );
   }
 
@@ -184,7 +208,7 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
       "legacy",
       "Play the stock greeting routine",
       "intent_greeting_goodmorning",
-      "Hello human. Systems online."
+      "Good to see you. Systems online."
     );
   }
 
@@ -194,7 +218,7 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
       "legacy",
       "Play the stock goodbye routine",
       "intent_greeting_goodbye",
-      "Goodbye for now."
+      "See you soon. I will keep the circuits warm."
     );
   }
 
@@ -206,12 +230,12 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     });
   }
 
-  if (exactAlias(normalized, ["whats my name", "what is my name", "who am i"])) {
+  if (exactAlias(normalized, ["whats my name", "what is my name", "who am i", "do you know my name"])) {
     return buildAssistant("whats_my_name", "legacy", "Recall your saved name", "get-user-name");
   }
 
   const weatherTomorrowMatch = normalized.match(
-    /^(?:(?:whats|what is)\s+the weather(?: report)? tomorrow|weather(?: report)? tomorrow)(?:\s+in\s+(.+))?$/i
+    /^(?:(?:whats|what is)\s+(?:the\s+)?(?:weather|forecast)(?: report)? tomorrow|(?:weather|forecast)(?: report)? tomorrow|tomorrows weather|tomorrow forecast)(?:\s+in\s+(.+))?$/i
   );
   if (weatherTomorrowMatch) {
     const location = weatherTomorrowMatch[1]?.trim();
@@ -225,7 +249,7 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
   }
 
   const weatherMatch = normalized.match(
-    /^(?:(?:whats|what is)\s+the weather(?: report)?|weather(?: report)?)(?:\s+in\s+(.+))?$/i
+    /^(?:(?:whats|what is|hows|how is)\s+(?:the\s+)?(?:weather|forecast)(?: report)?|(?:weather|forecast)(?: report)?|todays weather|today weather|whats it like outside)(?:\s+in\s+(.+))?$/i
   );
   if (weatherMatch) {
     const location = weatherMatch[1]?.trim();
@@ -238,7 +262,7 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     );
   }
 
-  const setTimerMatch = normalized.match(/^(?:set a timer for|start a timer for)\s+(.+)$/i);
+  const setTimerMatch = normalized.match(/^(?:set a timer for|start a timer for|set timer for|start timer for|timer for|count down for)\s+(.+)$/i);
   if (setTimerMatch) {
     const durationLabel = setTimerMatch[1].trim();
     return buildAssistant("set_timer", "legacy", `Set a timer for ${durationLabel}`, "set-timer", {
@@ -247,21 +271,21 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     });
   }
 
-  if (exactAlias(normalized, ["check the timer", "timer status", "how much time is left", "check timer"])) {
+  if (exactAlias(normalized, ["check the timer", "timer status", "how much time is left", "check timer", "time left", "how long is left on the timer"])) {
     return buildAssistant("check_timer", "legacy", "Check the active timer", "check-timer");
   }
 
-  if (exactAlias(normalized, ["cancel the timer", "stop the timer", "cancel timer"])) {
+  if (exactAlias(normalized, ["cancel the timer", "stop the timer", "cancel timer", "clear timer", "delete timer"])) {
     return buildAssistant("cancel_timer", "legacy", "Cancel the active timer", "cancel-timer");
   }
 
-  if (exactAlias(normalized, ["what time is it", "current time", "tell me the time"])) {
+  if (exactAlias(normalized, ["what time is it", "current time", "tell me the time", "what time is it right now", "time now", "whats the time"])) {
     return buildStockIntent(
       "time_now",
       "legacy",
       "Show the stock clock routine",
       "intent_clock_time",
-      "Showing the clock."
+      "Clock face coming right up."
     );
   }
 
@@ -274,7 +298,9 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
       "take a photo of me",
       "take a photo of us",
       "take a selfie",
-      "take a snapshot"
+      "take a snapshot",
+      "snap a photo",
+      "snap a picture"
     ])
   ) {
     return buildPhoto("take_picture", "legacy", "Take a photo and sync the latest image");
@@ -310,11 +336,11 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     return buildDrive("back_up", "legacy", "Back up", "reverse", 55, 1000);
   }
 
-  if (exactAlias(normalized, ["be quiet", "quiet mode", "stop talking"])) {
+  if (exactAlias(normalized, ["be quiet", "quiet mode", "stop talking", "mute yourself"])) {
     return buildAssistant("be_quiet", "legacy", "Mute audio", "mute-audio");
   }
 
-  if (exactAlias(normalized, ["unmute", "turn sound on", "audio on", "sound on"])) {
+  if (exactAlias(normalized, ["unmute", "turn sound on", "audio on", "sound on", "unmute yourself"])) {
     return buildAssistant("audio_on", "legacy", "Unmute audio", "unmute-audio");
   }
 
@@ -332,7 +358,7 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
       "legacy",
       "Play the stock praise reaction",
       "intent_imperative_praise",
-      "Thank you. Compliment acknowledged."
+      "Thank you. My confidence meter just went up."
     );
   }
 
@@ -342,27 +368,27 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
       "legacy",
       "Play the stock scolding reaction",
       "intent_imperative_scold",
-      "Disappointment registered."
+      "Ouch. I will try to do better."
     );
   }
 
-  if (exactAlias(normalized, ["come here", "come to me"])) {
+  if (exactAlias(normalized, ["come here", "come to me", "come over here"])) {
     return buildStockIntent(
       "come_here",
       "legacy",
       "Play the stock come here routine",
       "intent_imperative_come",
-      "Navigating toward you."
+      "On my way. Tiny treads, big commitment."
     );
   }
 
-  if (exactAlias(normalized, ["look at me", "look here", "face me"])) {
+  if (exactAlias(normalized, ["look at me", "look here", "face me", "look this way"])) {
     return buildStockIntent(
       "look_at_me",
       "legacy",
       "Play the stock look at me routine",
       "intent_imperative_lookatme",
-      "Looking at you."
+      "Eyes on you. I am paying attention."
     );
   }
 
@@ -377,7 +403,11 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
       "go dock",
       "go home",
       "back to dock",
-      "back to charger"
+      "back to charger",
+      "return to base",
+      "go to base",
+      "head to the dock",
+      "go back to your charger"
     ])
   ) {
     return buildAction("dock", "Return to the charger", withMeta("go_to_charger", "legacy", {}));
@@ -391,17 +421,17 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     return buildAssistant("stop_exploring", "legacy", "Stop exploring", "stop-exploring");
   }
 
-  if (exactAlias(normalized, ["play blackjack"])) {
+  if (exactAlias(normalized, ["play blackjack", "lets play blackjack", "start blackjack", "play cards"])) {
     return buildStockIntent(
       "play_blackjack",
       "legacy",
       "Start stock blackjack",
       "intent_play_blackjack",
-      "Starting blackjack."
+      "Blackjack time. Try not to bluff the robot."
     );
   }
 
-  if (exactAlias(normalized, ["play a game"])) {
+  if (exactAlias(normalized, ["play a game", "play any game", "start a game"])) {
     return buildStockIntent(
       "play_any_game",
       "legacy",
@@ -411,9 +441,9 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     );
   }
 
-  if (exactAlias(normalized, ["quit blackjack", "stop blackjack", "end blackjack"])) {
+  if (exactAlias(normalized, ["quit blackjack", "stop blackjack", "end blackjack", "cancel blackjack"])) {
     return buildAssistant("quit_blackjack", "legacy", "Quit blackjack", "quit-blackjack", {
-      spokenResponse: "Ending blackjack."
+      spokenResponse: "Blackjack table closed. House lights dimmed."
     });
   }
 
@@ -477,13 +507,13 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     );
   }
 
-  if (exactAlias(normalized, ["listen to music", "listen to the music", "music mode"])) {
+  if (exactAlias(normalized, ["listen to music", "listen to the music", "music mode", "music time"])) {
     return buildAssistant("listen_to_music", "legacy", "Listen to music", "listen-to-music", {
-      spokenResponse: "Music listening mode enabled."
+      spokenResponse: "Music mode enabled. I am ready to vibe."
     });
   }
 
-  if (exactAlias(normalized, ["play a trick", "do a trick", "show me a trick"])) {
+  if (exactAlias(normalized, ["play a trick", "do a trick", "show me a trick", "do something cool", "show me something cool"])) {
     return buildStockIntent(
       "play_any_trick",
       "legacy",
@@ -509,7 +539,9 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
       "celebrate",
       "happy new year",
       "happy birthday",
-      "happy holidays"
+      "happy holidays",
+      "lets celebrate",
+      "party time"
     ])
   ) {
     return buildAnimation("celebrate", "legacy", "Celebrate", "celebrate-spark");
@@ -557,25 +589,55 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     });
   }
 
-  if (exactAlias(normalized, ["roll a die", "roll die", "roll dice"])) {
+  if (exactAlias(normalized, ["roll a die", "roll the die", "roll die", "roll dice", "roll the dice", "roll a d6", "roll the d6", "throw the dice"])) {
     return buildAssistant("roll_die", "extended", "Roll a die", "roll-die");
   }
 
-  if (normalized === "lets play a new game") {
+  if (
+    exactAlias(normalized, [
+      "flip a coin",
+      "flip coin",
+      "toss a coin",
+      "toss coin",
+      "coin flip",
+      "heads or tails"
+    ])
+  ) {
+    return buildAssistant("flip_coin", "extended", "Flip a coin", "flip-coin");
+  }
+
+  if (
+    exactAlias(normalized, [
+      "rock paper scissors",
+      "play rock paper scissors",
+      "lets play rock paper scissors",
+      "let's play rock paper scissors",
+      "rps"
+    ])
+  ) {
+    return buildAssistant(
+      "rock_paper_scissors",
+      "extended",
+      "Play rock paper scissors",
+      "rock-paper-scissors"
+    );
+  }
+
+  if (exactAlias(normalized, ["lets play a new game", "start a new game", "play a new game"])) {
     return buildAssistant("play_new_game", "extended", "Play a new game", "play-new-game", {
-      spokenResponse: "Starting new game mode."
+      spokenResponse: "New game mode engaged. I am feeling competitive."
     });
   }
 
-  if (normalized === "lets play a classic") {
+  if (exactAlias(normalized, ["lets play a classic", "start a classic", "play a classic game", "play pong"])) {
     return buildAssistant("play_classic", "extended", "Play a classic game", "play-classic-game", {
-      spokenResponse: "Starting classic game mode."
+      spokenResponse: "Classic game mode engaged. Retro robot energy."
     });
   }
 
   if (exactAlias(normalized, ["bingo", "start bingo", "play bingo"])) {
     return buildAssistant("bingo", "extended", "Play bingo", "play-bingo", {
-      spokenResponse: "Bingo mode activated."
+      spokenResponse: "Bingo mode activated. Tiny announcer voice ready."
     });
   }
 
@@ -597,6 +659,18 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     return buildAssistant("who_are_you_chatting_with", "extended", "Check the chat target", "get-chat-target");
   }
 
+  if (
+    exactAlias(normalized, [
+      "tell me a joke",
+      "tell a joke",
+      "joke",
+      "say a joke",
+      "make me laugh"
+    ])
+  ) {
+    return buildAssistant("fun_joke", "custom", "Tell a robot joke", "fun-joke");
+  }
+
   const sayToMatch = normalized.match(/^(?:say to|tell)\s+(.+?)\s+(.+)$/i);
   if (sayToMatch) {
     return buildAssistant("say_message", "extended", `Send a message to ${sayToMatch[1].trim()}`, "send-chat-message", {
@@ -612,22 +686,63 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
       "power level",
       "charge level",
       "are you charged",
-      "are you fully charged"
+      "are you fully charged",
+      "battery percentage",
+      "how much battery do you have",
+      "how much power do you have",
+      "are you charging",
+      "are you docked"
     ])
   ) {
     return buildAssistant("battery", "custom", "Check battery status", "battery-status");
   }
 
-  if (exactAlias(normalized, ["connect", "connect to robot", "pair robot", "connect vector"])) {
+  if (exactAlias(normalized, ["connect", "connect to robot", "pair robot", "connect vector", "reconnect", "go online"])) {
     return buildAssistant("connect", "custom", "Connect to Vector", "connect");
   }
 
-  if (exactAlias(normalized, ["disconnect", "disconnect robot"])) {
+  if (exactAlias(normalized, ["disconnect", "disconnect robot", "go offline"])) {
     return buildAssistant("disconnect", "custom", "Disconnect Vector", "disconnect");
   }
 
-  if (exactAlias(normalized, ["diagnostics", "run diagnostics", "system diagnostics", "health check"])) {
+  if (exactAlias(normalized, ["diagnostics", "run diagnostics", "system diagnostics", "health check", "run a diagnostic", "check diagnostics"])) {
     return buildAssistant("diagnostics", "custom", "Run diagnostics", "diagnostics");
+  }
+
+  if (exactAlias(normalized, ["quick repair", "repair connection", "fix connection", "repair robot", "fix robot"])) {
+    return buildAssistant("quick_repair", "custom", "Run quick repair", "quick-repair");
+  }
+
+  if (exactAlias(normalized, ["repair voice", "fix voice", "repair audio", "fix audio", "repair microphone", "fix microphone"])) {
+    return buildAssistant("voice_repair", "custom", "Repair voice setup", "voice-repair");
+  }
+
+  if (exactAlias(normalized, ["scan for robots", "scan network", "find robots", "discover robots", "look for robots"])) {
+    return buildAssistant("discover_robots", "custom", "Discover local robots", "discover-robots");
+  }
+
+  const startRoamMatch = normalized.match(/^(?:start|begin)\s+(?:(quiet|explore|patrol)\s+)?(?:patrol|roam|automation)(?:\s+(?:mode|run))?(?:\s+in\s+(.+))?$/i);
+  if (startRoamMatch) {
+    return buildAssistant("automation_start", "custom", "Start patrol automation", "start-roam", {
+      behavior: startRoamMatch[1]?.trim().toLowerCase(),
+      targetArea: startRoamMatch[2]?.trim()
+    });
+  }
+
+  if (exactAlias(normalized, ["pause patrol", "pause roam", "pause automation", "hold patrol"])) {
+    return buildAssistant("automation_pause", "custom", "Pause patrol automation", "pause-roam");
+  }
+
+  if (exactAlias(normalized, ["resume patrol", "resume roam", "resume automation", "continue patrol"])) {
+    return buildAssistant("automation_resume", "custom", "Resume patrol automation", "resume-roam");
+  }
+
+  if (exactAlias(normalized, ["stop patrol", "stop roam", "stop automation", "end patrol", "end roam"])) {
+    return buildAssistant("automation_stop", "custom", "Stop patrol automation", "stop-roam");
+  }
+
+  if (exactAlias(normalized, ["automation status", "patrol status", "roam status", "status of patrol"])) {
+    return buildAssistant("automation_status", "custom", "Check patrol automation status", "automation-status");
   }
 
   if (exactAlias(normalized, ["dance", "do a dance", "show me a dance"])) {
@@ -638,11 +753,61 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     return buildAnimation("surprise_me", "custom", "Play a surprise trick", "silly-wiggle");
   }
 
+  if (
+    exactAlias(normalized, [
+      "snore",
+      "do a snore",
+      "pretend to snore",
+      "pretend to sleep",
+      "fake snore",
+      "go to sleep and snore",
+      "sleepy time"
+    ])
+  ) {
+    return buildAssistant("fun_snore", "custom", "Do a playful snore routine", "fun-snore");
+  }
+
+  if (
+    exactAlias(normalized, [
+      "laugh",
+      "giggle",
+      "do a laugh",
+      "laugh for me",
+      "robot laugh"
+    ])
+  ) {
+    return buildAssistant("fun_laugh", "custom", "Do a robot laugh", "fun-laugh");
+  }
+
+  if (
+    exactAlias(normalized, [
+      "sing",
+      "sing a song",
+      "hum",
+      "hum a tune",
+      "sing for me",
+      "robot song"
+    ])
+  ) {
+    return buildAssistant("fun_sing", "custom", "Sing a short robot tune", "fun-sing");
+  }
+
+  if (
+    exactAlias(normalized, [
+      "be silly",
+      "act silly",
+      "do something silly",
+      "silly mode"
+    ])
+  ) {
+    return buildAssistant("fun_silly", "custom", "Do a silly routine", "fun-silly");
+  }
+
   if (exactAlias(normalized, ["scan around", "look around", "look around the room"])) {
     return buildAnimation("scan_around", "custom", "Play a curious scan", "curious-peek");
   }
 
-  if (exactAlias(normalized, ["help", "show commands", "what can you do", "list commands"])) {
+  if (exactAlias(normalized, ["help", "show commands", "what can you do", "list commands", "help me", "what commands do you know"])) {
     return buildAssistant("help", "custom", "Show available commands", "show-help", {
       spokenResponse: LEGACY_HELP_TEXT
     });

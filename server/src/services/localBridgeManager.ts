@@ -7,7 +7,7 @@ const DEFAULT_ENDPOINT = "http://127.0.0.1:8080";
 const DEFAULT_TIMEOUT_MS = 1_500;
 const START_COOLDOWN_MS = 7_000;
 const START_WAIT_MS = 15_000;
-const SDK_INFO_PATH = "/api-sdk/get_sdk_info";
+const HEALTH_PATH = "/api/get_config";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -54,7 +54,7 @@ const resolveLaunchPath = (projectRoot: string) => {
 
 const probeEndpoint = async (endpoint: string, timeoutMs: number) => {
   try {
-    const response = await fetch(`${endpoint}${SDK_INFO_PATH}`, {
+    const response = await fetch(`${endpoint}${HEALTH_PATH}`, {
       signal: AbortSignal.timeout(timeoutMs)
     });
 
@@ -62,19 +62,9 @@ const probeEndpoint = async (endpoint: string, timeoutMs: number) => {
       return true;
     }
   } catch {
-    // Try POST below.
-  }
-
-  try {
-    const response = await fetch(`${endpoint}${SDK_INFO_PATH}`, {
-      method: "POST",
-      signal: AbortSignal.timeout(timeoutMs)
-    });
-
-    return response.ok;
-  } catch {
     return false;
   }
+  return false;
 };
 
 const buildStatus = ({

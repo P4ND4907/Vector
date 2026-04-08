@@ -17,7 +17,7 @@ export function FeatureAvailabilityCard({
       <CardHeader>
         <CardTitle>Feature availability</CardTitle>
         <CardDescription>
-          A plain-English view of what is ready now, what is layered on top of WirePod, and what still depends on the current stack.
+          A plain-English view of what is ready now, what is layered on top of the local bridge, and what still depends on the current stack.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

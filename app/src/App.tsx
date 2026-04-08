@@ -5,11 +5,15 @@ import { useAppBootstrap } from "@/hooks/useAppBootstrap";
 import { applyThemeClasses } from "@/lib/themes";
 
 export default function App() {
-  const { initialize, theme, colorTheme } = useAppBootstrap();
+  const { initialize, theme, colorTheme, hasHydrated } = useAppBootstrap();
 
   useEffect(() => {
-    initialize();
-  }, [initialize]);
+    if (!hasHydrated) {
+      return;
+    }
+
+    void initialize();
+  }, [hasHydrated, initialize]);
 
   useEffect(() => {
     applyThemeClasses(theme, colorTheme);

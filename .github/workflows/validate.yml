@@ -1,14 +1,21 @@
-name: Validate
+name: Daily Android Smoke
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 18 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-android-smoke-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  validate:
-    runs-on: windows-latest
+  android-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - name: Check out repository
@@ -20,11 +27,40 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
       - name: Install dependencies
         run: npm ci
 
-      - name: Typecheck
-        run: npm run typecheck
+      - name: Run core verification
+        run: npm run verify:ci
 
-      - name: Build app and server
-        run: npm run build
+      - name: Prepare Android project
+        run: npm run mobile:android:prepare
+
+      - name: Build debug APK and run emulator smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_7
+          disable-animations: true
+          emulator-options: -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect
+          script: |
+            npm run mobile:android:debug
+            npm run mobile:android:smoke -- --output-dir artifacts/android-smoke
+
+      - name: Upload daily test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vector-daily-android-smoke
+          path: |
+            app/android/app/build/outputs/apk/debug/app-debug.apk
+            artifacts/android-smoke
+          retention-days: 7
+          if-no-files-found: warn

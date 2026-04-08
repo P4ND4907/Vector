@@ -7,16 +7,24 @@ import {
 } from "../services/commandGapService.js";
 import { saveAiMemory as mergeAiMemory } from "../services/aiBrainService.js";
 import {
+  deleteLearnedCommand as removeLearnedCommand,
+  upsertLearnedCommand
+} from "../services/learnedCommandsService.js";
+import {
   buildChargingProtectionMessage,
   CHARGING_PROTECTION_RELEASE_PERCENT,
   isAnimationSafeWhileCharging,
   isChargingProtectionActive
 } from "../services/chargingProtectionService.js";
+import { buildBridgeWatchdogStatus } from "../services/bridgeWatchdogService.js";
 import { createLocalRepairService } from "../services/localRepairService.js";
+import {
+  createLocalRobotBridgeService,
+  batteryVoltageToPercent
+} from "../services/localRobotBridge.js";
 import { createLocalBridgeManager } from "../services/localBridgeManager.js";
 import { buildVoiceDiagnostics } from "../services/voiceDiagnosticsService.js";
 import { buildWirePodSetupStatus } from "../services/wirepodSetupService.js";
-import { createWirePodService, batteryVoltageToPercent } from "../services/wirepodService.js";
 import { createMockRobotController } from "./mockRobotController.js";
 import {
   animationIntentMap,
@@ -27,11 +35,13 @@ import {
   makeLog,
   toDiscoveredRobot
 } from "./hybridRobotSupport.js";
+import { pickRobotSerial, sanitizeRobotSerial } from "./serials.js";
 import type {
   AutomationControlRecord,
   CameraImageAsset,
   CameraSnapshotRecord,
   CameraSyncResult,
+  BridgeWatchdogStatusRecord,
   CommandGapRecord,
   CommandLogRecord,
   DiagnosticCheckRecord,
@@ -41,6 +51,7 @@ import type {
   RepairStepRecord,
   RobotController,
   RobotIntegrationInfo,
+  RoamEventRecord,
   RobotStatus,
   RoamSessionRecord,
   RoutineRecord,
@@ -72,8 +83,12 @@ export const createHybridRobotController = (options: {
     source: store.getState().settings.mockMode ? "mock" : "wirepod",
     wirePodReachable: false,
     wirePodBaseUrl: store.getState().settings.savedWirePodEndpoint || options.wirePodBaseUrl,
+    bridgeProvider: "wirepod",
+    bridgeLabel: "WirePod compatibility bridge",
+    bridgeReachable: false,
+    bridgeBaseUrl: store.getState().settings.savedWirePodEndpoint || options.wirePodBaseUrl,
     managedBridge: managedBridge.getCachedStatus(),
-    note: store.getState().settings.mockMode ? "Mock mode is active." : "Vector brain offline",
+    note: store.getState().settings.mockMode ? "Mock mode is active." : "Local bridge offline",
     robotReachable: false,
     mockMode: store.getState().settings.mockMode,
     autoDetectEnabled: store.getState().settings.autoDetectWirePod,
@@ -83,7 +98,7 @@ export const createHybridRobotController = (options: {
     probes: []
   };
 
-  const wirePod = createWirePodService({
+  const wirePod = createLocalRobotBridgeService({
     initialEndpoint: store.getState().settings.savedWirePodEndpoint || options.wirePodBaseUrl,
     timeoutMs: options.wirePodTimeoutMs,
     getSettings: () => store.getState().settings,
@@ -99,6 +114,10 @@ export const createHybridRobotController = (options: {
         source: currentState.settings.mockMode ? "mock" : "wirepod",
         wirePodReachable: true,
         wirePodBaseUrl: endpoint,
+        bridgeProvider: wirePod.provider,
+        bridgeLabel: wirePod.label,
+        bridgeReachable: true,
+        bridgeBaseUrl: endpoint,
         mockMode: currentState.settings.mockMode,
         autoDetectEnabled: currentState.settings.autoDetectWirePod,
         reconnectOnStartup: currentState.settings.reconnectOnStartup,
@@ -109,7 +128,7 @@ export const createHybridRobotController = (options: {
         note:
           managedBridge.getCachedStatus().source === "bundled"
             ? "Bundled local bridge detected."
-            : "WirePod detected."
+            : `${wirePod.label} detected.`
       };
     },
     onEndpointFailure: (probes, error) => {
@@ -118,6 +137,13 @@ export const createHybridRobotController = (options: {
         ...lastIntegration,
         source: currentState.settings.mockMode ? "mock" : "wirepod",
         wirePodReachable: false,
+        bridgeProvider: wirePod.provider,
+        bridgeLabel: wirePod.label,
+        bridgeReachable: false,
+        bridgeBaseUrl:
+          wirePod.getActiveEndpoint() ||
+          currentState.settings.savedWirePodEndpoint ||
+          options.wirePodBaseUrl,
         robotReachable: false,
         mockMode: currentState.settings.mockMode,
         autoDetectEnabled: currentState.settings.autoDetectWirePod,
@@ -140,14 +166,17 @@ export const createHybridRobotController = (options: {
   const getSnapshots = () => store.getState().snapshots;
   const getSupportReports = () => store.getState().supportReports;
   const getAiMemory = () => store.getState().aiMemory;
+  const getLearnedCommands = () => store.getState().learnedCommands;
   const getCommandGaps = () => store.getState().commandGaps;
   const getAutomationControl = () => store.getState().automationControl;
   const getRoamSessions = () => store.getState().roamSessions;
   const getSelectedSerial = () =>
-    getSettings().serial ||
-    cachedRobot.serial ||
-    getProfile().selectedSerial ||
-    lastIntegration.selectedSerial;
+    pickRobotSerial(
+      getSettings().serial,
+      cachedRobot.serial,
+      getProfile().selectedSerial,
+      lastIntegration.selectedSerial
+    );
 
   const latestSuccessfulCommand = () => getLogs().find((log) => log.status === "success");
   const latestFailedCommand = () => getLogs().find((log) => log.status === "error");
@@ -193,6 +222,8 @@ export const createHybridRobotController = (options: {
       lastSeen: new Date().toISOString()
     });
 
+  const selectSerial = (...values: Array<string | undefined>) => pickRobotSerial(...values);
+
   const blockWhileCharging = (
     type: string,
     payload: Record<string, unknown>,
@@ -216,9 +247,89 @@ export const createHybridRobotController = (options: {
       isDocked: cachedRobot.isDocked,
       mood: cachedRobot.isCharging ? "charging" : "sleepy",
       currentActivity: cachedRobot.isCharging
-        ? "Charging safely while the local brain is offline."
+        ? "Charging safely while the local bridge is offline."
         : message
     });
+
+  const buildFallbackDiscoveredRobots = (): DiscoveredRobot[] => {
+    const settings = getSettings();
+    const profile = getProfile();
+    const serial = selectSerial(
+      settings.serial,
+      profile.selectedSerial,
+      cachedRobot.serial,
+      lastIntegration.selectedSerial
+    );
+
+    if (!serial) {
+      return [];
+    }
+
+    const alias = profile.aliases[serial] || cachedRobot.nickname || cachedRobot.name;
+
+    return [
+      {
+        id: serial,
+        serial,
+        name: buildWirePodRobotName(serial, alias),
+        ipAddress:
+          cachedRobot.ipAddress && cachedRobot.ipAddress !== "Unavailable"
+            ? cachedRobot.ipAddress
+            : "Unavailable",
+        signalStrength: cachedRobot.wifiStrength || 0,
+        secure: true,
+        activated: true,
+        lastSeen: cachedRobot.lastSeen || new Date().toISOString()
+      }
+    ];
+  };
+
+  const rememberSelectedRobot = (serial: string, alias?: string, token?: string) => {
+    store.saveRobotProfile({
+      selectedSerial: serial,
+      aliases: alias ? { [serial]: alias } : {},
+      token: token || getProfile().token
+    });
+    store.saveSettings({ serial });
+    syncIntegration({ selectedSerial: serial });
+  };
+
+  const resolveAutoSelectedRobot = (robots: Array<{ esn: string; activated: boolean; ip_address: string }>) => {
+    const selectedSerial = selectSerial(
+      getSettings().serial,
+      getProfile().selectedSerial,
+      cachedRobot.serial,
+      lastIntegration.selectedSerial
+    );
+
+    if (selectedSerial) {
+      return robots.find((robot) => robot.esn === selectedSerial);
+    }
+
+    const uniqueRobots = Array.from(
+      new Map(
+        robots
+          .filter((robot) => sanitizeRobotSerial(robot.esn))
+          .map((robot) => [robot.esn, robot])
+      ).values()
+    );
+
+    if (uniqueRobots.length === 1) {
+      return uniqueRobots[0];
+    }
+
+    const activatedRobots = uniqueRobots.filter((robot) => robot.activated);
+    if (activatedRobots.length === 1) {
+      return activatedRobots[0];
+    }
+
+    const reachableRobots = uniqueRobots.filter((robot) => Boolean(robot.ip_address));
+    if (reachableRobots.length === 1) {
+      return reachableRobots[0];
+    }
+
+    return undefined;
+  };
 
   const saveCommandGap = (payload: {
     source: CommandGapRecord["source"];
@@ -308,12 +419,19 @@ export const createHybridRobotController = (options: {
       cameraAvailable: isConnected,
       connectionSource: "wirepod",
       systemStatus: "ready",
-      currentActivity: isConnected ? "Ready for commands." : "Vector brain offline"
+      currentActivity: isConnected ? "Ready for commands." : "Local bridge offline"
     });
   };
 
   const syncIntegration = (patch?: Partial<RobotIntegrationInfo>) => {
     const settings = getSettings();
+    const resolvedBridgeBaseUrl =
+      patch?.bridgeBaseUrl ||
+      patch?.wirePodBaseUrl ||
+      wirePod.getActiveEndpoint() ||
+      settings.savedWirePodEndpoint ||
+      options.wirePodBaseUrl;
+
     lastIntegration = {
       ...lastIntegration,
       source: settings.mockMode ? "mock" : "wirepod",
@@ -321,16 +439,33 @@ export const createHybridRobotController = (options: {
       autoDetectEnabled: settings.autoDetectWirePod,
       reconnectOnStartup: settings.reconnectOnStartup,
       customEndpoint: settings.customWirePodEndpoint || undefined,
-      wirePodBaseUrl:
-        patch?.wirePodBaseUrl ||
-        wirePod.getActiveEndpoint() ||
-        settings.savedWirePodEndpoint ||
-        options.wirePodBaseUrl,
+      wirePodBaseUrl: resolvedBridgeBaseUrl,
+      bridgeProvider: patch?.bridgeProvider || lastIntegration.bridgeProvider || wirePod.provider,
+      bridgeLabel: patch?.bridgeLabel || lastIntegration.bridgeLabel || wirePod.label,
+      bridgeReachable:
+        patch?.bridgeReachable ?? patch?.wirePodReachable ?? lastIntegration.bridgeReachable ?? false,
+      bridgeBaseUrl: resolvedBridgeBaseUrl,
       lastCheckedAt: new Date().toISOString(),
       managedBridge: managedBridge.getCachedStatus(),
       probes: wirePod.getLastProbes(),
       ...patch
     };
+    lastIntegration.selectedSerial = sanitizeRobotSerial(lastIntegration.selectedSerial);
+    lastIntegration.bridgeProvider = lastIntegration.bridgeProvider || wirePod.provider;
+    lastIntegration.bridgeLabel = lastIntegration.bridgeLabel || wirePod.label;
+    lastIntegration.bridgeReachable = lastIntegration.bridgeReachable ?? lastIntegration.wirePodReachable;
+    lastIntegration.bridgeBaseUrl = lastIntegration.bridgeBaseUrl || lastIntegration.wirePodBaseUrl;
+
+    if (!patch?.note) {
+      if (settings.mockMode) {
+        lastIntegration.note = "Mock mode is active.";
+      } else if (lastIntegration.note === "Mock mode is active.") {
+        lastIntegration.note = lastIntegration.robotReachable
+          ? "Connected through the local bridge."
+          : "Local bridge offline";
+      }
+    }
+
     return lastIntegration;
   };
 
@@ -340,14 +475,14 @@ export const createHybridRobotController = (options: {
       suggestions.push("Mock mode is on. Turn it off in Settings to talk to the real robot.");
     }
     if (!lastIntegration.wirePodReachable) {
-      suggestions.push("Vector brain offline. Make sure WirePod is running on this computer.");
-      suggestions.push("Open http://127.0.0.1:8080 on this PC to confirm the local WirePod server is alive.");
+      suggestions.push("Local bridge offline. Make sure the local bridge is running on this computer.");
+      suggestions.push("Open http://127.0.0.1:8080 on this PC to confirm the local bridge server is alive.");
       if (lastIntegration.managedBridge.available) {
         suggestions.push("A bundled local bridge is available. The app will try to start it automatically when needed.");
       }
     }
     if (lastIntegration.wirePodReachable && !lastIntegration.robotReachable) {
-      suggestions.push("WirePod is online, but Vector is not responding on local Wi-Fi yet.");
+      suggestions.push("The local bridge is online, but Vector is not responding on local Wi-Fi yet.");
       suggestions.push("If Vector just restarted, wait a moment and try reconnect again.");
       suggestions.push("Make sure Vector and this PC are on the same local Wi-Fi and not on a guest or isolated network.");
       suggestions.push("If disconnects keep returning, reserve a static IP for Vector in your router.");
@@ -418,6 +553,27 @@ export const createHybridRobotController = (options: {
     });
   };
 
+  const getCurrentBridgeWatchdogStatus = async (): Promise<BridgeWatchdogStatusRecord> => {
+    if (getSettings().mockMode) {
+      return fallback.getBridgeWatchdogStatus() as BridgeWatchdogStatusRecord;
+    }
+
+    let debugLogsText = "";
+    try {
+      debugLogsText = await wirePod.getDebugLogs();
+    } catch {
+      debugLogsText = "";
+    }
+
+    return buildBridgeWatchdogStatus({
+      integration: syncIntegration(),
+      managedBridge: managedBridge.getCachedStatus(),
+      debugLogs: debugLogsText,
+      selectedSerial: getSelectedSerial(),
+      autoRecoveryAvailable: managedBridge.getCachedStatus().available || localRepair.hasKnownInstall()
+    });
+  };
+
   const getCurrentWirePodSetupStatus = async (): Promise<WirePodSetupStatusRecord> => {
     if (getSettings().mockMode) {
       return fallback.getWirePodSetupStatus() as WirePodSetupStatusRecord;
@@ -436,11 +592,13 @@ export const createHybridRobotController = (options: {
         reachable: true,
         config,
         sttInfo,
-        sdkInfo
+        sdkInfo,
+        savedSerial: getSelectedSerial()
       });
     } catch {
       return buildWirePodSetupStatus({
-        reachable: false
+        reachable: false,
+        savedSerial: getSelectedSerial()
       });
     }
   };
@@ -468,9 +626,9 @@ export const createHybridRobotController = (options: {
           source: "wirepod",
           wirePodReachable: true,
           robotReachable: false,
-          note: "WirePod is online, but no authenticated Vector robots were found."
+          note: "The local bridge is online, but no authenticated Vector robots were found."
         });
-        cachedRobot = buildOfflineFromCached("Vector brain offline");
+        cachedRobot = buildOfflineFromCached("Local bridge offline");
         return cachedRobot;
       }
 
@@ -478,24 +636,19 @@ export const createHybridRobotController = (options: {
       const selectedRobot = chooseRobot({
         payload: {
           ...payload,
-          serial: payload?.serial || settings.serial || getProfile().selectedSerial
+          serial: selectSerial(payload?.serial, settings.serial, getProfile().selectedSerial)
         },
         robots,
-        selectedSerial: settings.serial || getProfile().selectedSerial
+        selectedSerial: selectSerial(settings.serial, getProfile().selectedSerial)
       });
 
       if (!selectedRobot) {
-        cachedRobot = buildOfflineFromCached("Vector brain offline");
+        cachedRobot = buildOfflineFromCached("Local bridge offline");
         return cachedRobot;
       }
 
       const alias = payload?.nickname || payload?.name || getProfile().aliases[selectedRobot.esn];
-      store.saveRobotProfile({
-        selectedSerial: selectedRobot.esn,
-        aliases: alias ? { [selectedRobot.esn]: alias } : {},
-        token: payload?.token || getProfile().token
-      });
-      store.saveSettings({ serial: selectedRobot.esn });
+      rememberSelectedRobot(selectedRobot.esn, alias, payload?.token);
 
       try {
         const battery = await wirePod.getBattery(selectedRobot.esn);
@@ -517,11 +670,11 @@ export const createHybridRobotController = (options: {
           note:
             managedBridge.getCachedStatus().source === "bundled"
               ? "Connected through the bundled local bridge."
-              : "Connected through local WirePod."
+              : "Connected through the local bridge."
         });
         return nextRobot;
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Vector brain offline";
+        const message = error instanceof Error ? error.message : "Local bridge offline";
         const nextRobot = buildRealRobot({
           alias,
           serial: selectedRobot.esn,
@@ -537,19 +690,44 @@ export const createHybridRobotController = (options: {
           wirePodReachable: true,
           robotReachable: false,
           selectedSerial: selectedRobot.esn,
-          note: message || "Vector is not responding through WirePod right now."
+          note: message || "The local bridge is online, but Vector is not responding right now."
         });
         return nextRobot;
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Vector brain offline";
+      const message = error instanceof Error ? error.message : "Local bridge offline";
+      const wirePodReachable = Boolean(wirePod.getActiveEndpoint());
+      const fallbackSerial = selectSerial(
+        payload?.serial,
+        getSettings().serial,
+        getProfile().selectedSerial,
+        cachedRobot.serial,
+        lastIntegration.selectedSerial
+      );
       syncIntegration({
         source: "wirepod",
-        wirePodReachable: false,
+        wirePodReachable,
         robotReachable: false,
-        note: message
+        selectedSerial: fallbackSerial,
+        note: wirePodReachable
+          ? "The local bridge is online, but the robot routes are not responding. Try Quick repair or restart the desktop service."
+          : message || "Local bridge offline"
       });
-      cachedRobot = buildOfflineFromCached(message);
+      cachedRobot = applyRobotState({
+        ...buildOfflineRobot(
+          {
+            ...getProfile(),
+            selectedSerial: fallbackSerial || getProfile().selectedSerial
+          },
+          message,
+          "wirepod"
+        ),
+        batteryPercent: cachedRobot.batteryPercent,
+        isCharging: cachedRobot.isCharging,
+        isDocked: cachedRobot.isDocked,
+        lastSeen: cachedRobot.lastSeen || new Date().toISOString(),
+        currentActivity: "WirePod answered, but the robot SDK routes timed out."
+      });
       return cachedRobot;
     }
   };
@@ -559,12 +737,13 @@ export const createHybridRobotController = (options: {
     action: (serial: string, robot: RobotStatus) => Promise<T>
   ) => {
     const robot = await refreshWirePodStatus();
-    const fallbackSerial =
-      robot.serial ||
-      cachedRobot.serial ||
-      getSettings().serial ||
-      getProfile().selectedSerial ||
-      lastIntegration.selectedSerial;
+    const fallbackSerial = selectSerial(
+      robot.serial,
+      cachedRobot.serial,
+      getSettings().serial,
+      getProfile().selectedSerial,
+      lastIntegration.selectedSerial
+    );
 
     if ((!robot.isConnected || !robot.serial) && fallbackSerial && lastIntegration.wirePodReachable) {
       const fallbackRobot = applyRobotState({
@@ -581,7 +760,7 @@ export const createHybridRobotController = (options: {
     }
 
     if (!robot.isConnected || !robot.serial) {
-      throw new Error(lastIntegration.note || "Vector brain offline");
+      throw new Error(lastIntegration.note || "Local bridge offline");
     }
 
     setBusy(activity);
@@ -617,6 +796,338 @@ export const createHybridRobotController = (options: {
   const getActiveRoamSession = () =>
     getRoamSessions().find((session) => session.id === getAutomationControl().activeSessionId);
 
+  const AUTOMATION_EVENT_LIMIT = 18;
+  const automationHeartbeatIntervalMs = {
+    patrol: 14_000,
+    explore: 11_000,
+    quiet: 18_000
+  } as const satisfies Record<AutomationControlRecord["behavior"], number>;
+  let automationHeartbeatRunning = false;
+
+  const roundMetric = (value: number) => Math.round(value * 100) / 100;
+
+  const pushRoamEvent = (
+    session: RoamSessionRecord,
+    event: RoamEventRecord,
+    summary: string
+  ): RoamSessionRecord => ({
+    ...session,
+    summary,
+    events: [event, ...session.events].slice(0, AUTOMATION_EVENT_LIMIT)
+  });
+
+  const updateActiveRoamSession = (
+    sessionId: string,
+    updater: (session: RoamSessionRecord) => RoamSessionRecord
+  ) => {
+    let updatedSession: RoamSessionRecord | undefined;
+    const nextSessions = getRoamSessions().map((session) => {
+      if (session.id !== sessionId) {
+        return session;
+      }
+
+      updatedSession = updater(session);
+      return updatedSession;
+    });
+    saveRoamSessions(nextSessions);
+    return updatedSession;
+  };
+
+  const runAutomationHeartbeat = async (robotOverride?: RobotStatus) => {
+    const automation = getAutomationControl();
+    const activeSession = getActiveRoamSession();
+
+    if (
+      getSettings().mockMode ||
+      automation.status !== "running" ||
+      !activeSession ||
+      activeSession.status !== "running"
+    ) {
+      return robotOverride ?? cachedRobot;
+    }
+
+    const lastHeartbeatMs = new Date(automation.lastHeartbeatAt || activeSession.startedAt).getTime();
+    const intervalMs = automationHeartbeatIntervalMs[automation.behavior];
+    if (Number.isFinite(lastHeartbeatMs) && Date.now() - lastHeartbeatMs < intervalMs) {
+      return robotOverride ?? cachedRobot;
+    }
+
+    if (automationHeartbeatRunning) {
+      return robotOverride ?? cachedRobot;
+    }
+
+    automationHeartbeatRunning = true;
+
+    try {
+      const nowIso = new Date().toISOString();
+      let robot = robotOverride ?? (await refreshWirePodStatus());
+      const serial = selectSerial(
+        robot.serial,
+        cachedRobot.serial,
+        getSettings().serial,
+        getProfile().selectedSerial,
+        lastIntegration.selectedSerial
+      );
+      const baseDataGain = automation.dataCollectionEnabled
+        ? automation.behavior === "explore"
+          ? 4
+          : 3
+        : 0;
+
+      if (!serial || !lastIntegration.wirePodReachable) {
+        const summary = "Autonomy is waiting for the local bridge to respond.";
+        const event: RoamEventRecord = {
+          id: crypto.randomUUID(),
+          createdAt: nowIso,
+          type: "status",
+          message: "Roam heartbeat paused because the local backend is not reachable.",
+          batteryPercent: robot.batteryPercent,
+          dataPointsCollected: activeSession.dataPointsCollected
+        };
+        updateActiveRoamSession(activeSession.id, (session) =>
+          pushRoamEvent(session, event, summary)
+        );
+        saveAutomationControl({ lastHeartbeatAt: nowIso });
+        return applyRobotState({
+          ...robot,
+          currentActivity: summary,
+          lastSeen: nowIso
+        });
+      }
+
+      if (!robot.isConnected) {
+        await wirePod.wake(serial).catch(() => undefined);
+        await wait(900);
+        robot = await refreshWirePodStatus({ serial });
+      }
+
+      if (automation.safeReturnEnabled && robot.batteryPercent <= automation.autoDockThreshold) {
+        await wirePod.stop(serial).catch(() => undefined);
+        await wirePod.dock(serial).catch(() => undefined);
+
+        const summary = `Auto-return triggered at ${robot.batteryPercent}% battery.`;
+        const event: RoamEventRecord = {
+          id: crypto.randomUUID(),
+          createdAt: nowIso,
+          type: "battery",
+          message: `Battery reached ${robot.batteryPercent}%. Returning to the charger automatically.`,
+          batteryPercent: robot.batteryPercent,
+          dataPointsCollected: activeSession.dataPointsCollected
+        };
+
+        updateActiveRoamSession(activeSession.id, (session) =>
+          pushRoamEvent(
+            {
+              ...session,
+              status: "completed",
+              endedAt: nowIso,
+              batteryEnd: robot.batteryPercent
+            },
+            event,
+            summary
+          )
+        );
+        saveAutomationControl({
+          status: "idle",
+          activeSessionId: undefined,
+          lastHeartbeatAt: nowIso
+        });
+        pushLog(
+          makeLog(
+            "automation-auto-dock",
+            {
+              sessionId: activeSession.id,
+              batteryPercent: robot.batteryPercent
+            },
+            "success",
+            summary
+          )
+        );
+
+        return applyRobotState({
+          ...robot,
+          isDocked: true,
+          isCharging: true,
+          mood: "charging",
+          currentActivity: "Auto-returning to the charger.",
+          lastSeen: nowIso
+        });
+      }
+
+      if (!robot.isConnected) {
+        const summary = "Autonomy is waiting for the robot connection to recover.";
+        const event: RoamEventRecord = {
+          id: crypto.randomUUID(),
+          createdAt: nowIso,
+          type: "status",
+          message: "Roam heartbeat is standing by for the robot connection to come back.",
+          batteryPercent: robot.batteryPercent,
+          dataPointsCollected: activeSession.dataPointsCollected
+        };
+        updateActiveRoamSession(activeSession.id, (session) =>
+          pushRoamEvent(session, event, summary)
+        );
+        saveAutomationControl({ lastHeartbeatAt: nowIso });
+        return applyRobotState({
+          ...robot,
+          currentActivity: summary,
+          lastSeen: nowIso
+        });
+      }
+
+      if (robot.isDocked) {
+        const dockedDataGain = baseDataGain > 0 ? Math.max(1, baseDataGain - 1) : 0;
+        const summary = "Roam is armed, but Vector is still on the charger.";
+        const event: RoamEventRecord = {
+          id: crypto.randomUUID(),
+          createdAt: nowIso,
+          type: "dock",
+          message: `Roam heartbeat checked ${automation.targetArea}, but Vector is still docked.`,
+          batteryPercent: robot.batteryPercent,
+          dataPointsCollected: activeSession.dataPointsCollected + dockedDataGain
+        };
+        updateActiveRoamSession(activeSession.id, (session) =>
+          pushRoamEvent(
+            {
+              ...session,
+              dataPointsCollected: session.dataPointsCollected + dockedDataGain
+            },
+            event,
+            summary
+          )
+        );
+        saveAutomationControl({ lastHeartbeatAt: nowIso });
+        return applyRobotState({
+          ...robot,
+          currentActivity: summary,
+          lastSeen: nowIso
+        });
+      }
+
+      const stepIndex = activeSession.commandsIssued % 4;
+      let eventType: RoamEventRecord["type"] = "movement";
+      let summary = "";
+      let distanceGain = 0;
+      let commandGain = 1;
+      let dataGain = baseDataGain;
+      let snapshotGain = 0;
+
+      if (automation.behavior === "explore") {
+        if (stepIndex === 0) {
+          await wirePod.moveHead(serial, 2, 180);
+          await wirePod.moveWheels(serial, 72, 54, 860);
+          summary = `Explore mode pushed into a new route in ${automation.targetArea}.`;
+          distanceGain = 0.52;
+        } else if (stepIndex === 1) {
+          await wirePod.moveWheels(serial, 64, -38, 520);
+          summary = "Explore mode pivoted to a fresh angle.";
+          distanceGain = 0.14;
+        } else if (stepIndex === 2) {
+          await wirePod.moveLift(serial, 2, 160);
+          await wirePod.moveHead(serial, -2, 220);
+          summary = "Explore mode paused for a curious scan.";
+          distanceGain = 0.05;
+          eventType = "vision";
+        } else {
+          await wirePod.moveWheels(serial, 68, 68, 760);
+          summary = `Explore mode pressed deeper into ${automation.targetArea}.`;
+          distanceGain = 0.46;
+        }
+      } else if (automation.behavior === "quiet") {
+        if (stepIndex === 0) {
+          await wirePod.moveWheels(serial, 38, 38, 320);
+          summary = "Quiet patrol drifted forward softly.";
+          distanceGain = 0.12;
+        } else if (stepIndex === 1) {
+          await wirePod.moveHead(serial, 1, 140);
+          await wirePod.moveHead(serial, -1, 140);
+          summary = "Quiet patrol made a small lookout check.";
+          distanceGain = 0.03;
+          eventType = "vision";
+        } else if (stepIndex === 2) {
+          await wirePod.moveWheels(serial, 34, 40, 280);
+          summary = "Quiet patrol adjusted course gently.";
+          distanceGain = 0.1;
+        } else {
+          await wirePod.stop(serial).catch(() => undefined);
+          summary = "Quiet patrol paused to listen.";
+          distanceGain = 0;
+          eventType = "status";
+        }
+      } else {
+        if (stepIndex === 0) {
+          await wirePod.moveWheels(serial, 56, 56, 620);
+          summary = `Patrol sweep forward through ${automation.targetArea}.`;
+          distanceGain = 0.32;
+        } else if (stepIndex === 1) {
+          await wirePod.moveWheels(serial, -48, 48, 420);
+          summary = `Patrol pivoted left to re-check ${automation.targetArea}.`;
+          distanceGain = 0.1;
+        } else if (stepIndex === 2) {
+          await wirePod.moveWheels(serial, 56, 56, 620);
+          summary = `Patrol continued through ${automation.targetArea}.`;
+          distanceGain = 0.32;
+        } else {
+          await wirePod.moveHead(serial, 2, 180);
+          await wirePod.moveHead(serial, -2, 220);
+          summary = "Patrol visual sweep complete.";
+          distanceGain = 0.05;
+          eventType = "vision";
+        }
+      }
+
+      const shouldCaptureSnapshot =
+        automation.captureSnapshots &&
+        robot.cameraAvailable &&
+        (activeSession.commandsIssued + 1) % (automation.behavior === "explore" ? 3 : 4) === 0;
+
+      if (shouldCaptureSnapshot) {
+        await wirePod.takePhoto(serial).catch(() => undefined);
+        snapshotGain = 1;
+        dataGain += 2;
+        summary = `${summary} Snapshot captured for the session log.`;
+        eventType = "vision";
+      }
+
+      robot = await refreshWirePodStatus({ serial });
+      const nextDataPoints = activeSession.dataPointsCollected + dataGain;
+      const event: RoamEventRecord = {
+        id: crypto.randomUUID(),
+        createdAt: nowIso,
+        type: eventType,
+        message: summary,
+        batteryPercent: robot.batteryPercent,
+        dataPointsCollected: nextDataPoints
+      };
+
+      updateActiveRoamSession(activeSession.id, (session) =>
+        pushRoamEvent(
+          {
+            ...session,
+            distanceMeters: roundMetric(session.distanceMeters + distanceGain),
+            commandsIssued: session.commandsIssued + commandGain,
+            snapshotsTaken: session.snapshotsTaken + snapshotGain,
+            dataPointsCollected: nextDataPoints
+          },
+          event,
+          summary
+        )
+      );
+      saveAutomationControl({ lastHeartbeatAt: nowIso });
+
+      return applyRobotState({
+        ...robot,
+        mood: "focused",
+        currentActivity: summary,
+        lastSeen: nowIso
+      });
+    } catch {
+      return robotOverride ?? cachedRobot;
+    } finally {
+      automationHeartbeatRunning = false;
+    }
+  };
+
   const buildRepairStep = (
     label: string,
     status: RepairStepRecord["status"],
@@ -644,6 +1155,35 @@ export const createHybridRobotController = (options: {
     return targetVolume;
   };
 
+  const buildSavedRobotTarget = (robot?: Partial<RobotStatus>): Partial<RobotStatus> | undefined => {
+    const serial = selectSerial(
+      robot?.serial,
+      cachedRobot.serial,
+      getSettings().serial,
+      getProfile().selectedSerial,
+      lastIntegration.selectedSerial
+    );
+
+    if (!serial) {
+      return undefined;
+    }
+
+    const ipAddress =
+      robot?.ipAddress && robot.ipAddress !== "Unavailable"
+        ? robot.ipAddress
+        : cachedRobot.ipAddress && cachedRobot.ipAddress !== "Unavailable"
+          ? cachedRobot.ipAddress
+          : undefined;
+
+    return {
+      serial,
+      ipAddress,
+      token: robot?.token || cachedRobot.token || getProfile().token,
+      name: robot?.name || cachedRobot.name,
+      nickname: robot?.nickname || cachedRobot.nickname || getProfile().aliases[serial]
+    };
+  };
+
   const runQuickRepair = async (): Promise<RepairResultRecord> => {
     if (getSettings().mockMode) {
       const result: RepairResultRecord = {
@@ -665,12 +1205,107 @@ export const createHybridRobotController = (options: {
 
     const steps: RepairStepRecord[] = [];
     let robot = await refreshWirePodStatus();
+    const watchdogBefore = await getCurrentBridgeWatchdogStatus();
+    const savedRobotTarget = buildSavedRobotTarget(robot);
+    const savedSerial = savedRobotTarget?.serial;
+
+    steps.push(
+      buildRepairStep(
+        "Watchdog assessment",
+        watchdogBefore.overallStatus === "healthy"
+          ? "success"
+          : watchdogBefore.autoRecoveryLikelyHelpful
+            ? "warn"
+            : "fail",
+        watchdogBefore.summary
+      )
+    );
+
+    if (watchdogBefore.issueCode === "bridge-offline" && managedBridge.getCachedStatus().available) {
+      const managedStatus = await managedBridge.ensureRunning().catch(() => managedBridge.getCachedStatus());
+      steps.push(
+        buildRepairStep(
+          "Start bundled bridge",
+          managedStatus.running ? "success" : "warn",
+          managedStatus.running
+            ? `The bundled bridge is running at ${managedStatus.endpoint}.`
+            : managedStatus.note
+        )
+      );
+      robot = await refreshWirePodStatus(savedRobotTarget);
+    }
+
+    if (
+      (watchdogBefore.issueCode === "sdk-session-timeout" ||
+        watchdogBefore.issueCode === "reconnect-loop") &&
+      !managedBridge.getCachedStatus().available &&
+      localRepair.hasKnownInstall()
+    ) {
+      const restartResult = await localRepair.tryStartWirePod();
+      steps.push(
+        buildRepairStep(
+          "Relaunch bridge session",
+          restartResult.launched ? "success" : restartResult.attempted ? "warn" : "fail",
+          restartResult.executablePath
+            ? `${restartResult.message} (${restartResult.executablePath})`
+            : restartResult.message
+        )
+      );
+
+      if (restartResult.launched) {
+        await wait(1_250);
+        robot = await refreshWirePodStatus(savedRobotTarget);
+      }
+    }
+
+    if (
+      savedRobotTarget &&
+      (watchdogBefore.issueCode === "sdk-session-timeout" ||
+        watchdogBefore.issueCode === "reconnect-loop" ||
+        watchdogBefore.issueCode === "robot-routes-quiet")
+    ) {
+      robot = await refreshWirePodStatus(savedRobotTarget);
+      steps.push(
+        buildRepairStep(
+          "Re-target saved robot",
+          robot.isConnected ? "success" : "warn",
+          robot.isConnected
+            ? `${robot.nickname ?? robot.name} answered after the saved robot target was refreshed.`
+            : "The saved robot target was refreshed, but the live routes are still settling."
+        )
+      );
+
+      if (!robot.isConnected && savedSerial) {
+        try {
+          await wirePod.wake(savedSerial);
+          await wait(1_200);
+          robot = await refreshWirePodStatus(savedRobotTarget);
+          steps.push(
+            buildRepairStep(
+              "Wake saved robot",
+              robot.isConnected ? "success" : "warn",
+              robot.isConnected
+                ? `${robot.nickname ?? robot.name} answered after the wake signal.`
+                : "The wake signal was sent, but the saved robot still is not answering yet."
+            )
+          );
+        } catch (error) {
+          steps.push(
+            buildRepairStep(
+              "Wake saved robot",
+              "warn",
+              error instanceof Error ? error.message : "The wake signal could not be sent."
+            )
+          );
+        }
+      }
+    }
 
     if (!lastIntegration.wirePodReachable) {
       const startResult = await localRepair.tryStartWirePod();
       steps.push(
         buildRepairStep(
-          "Start local Vector brain",
+          "Start local bridge",
           startResult.launched ? "success" : startResult.attempted ? "warn" : "fail",
           startResult.executablePath
             ? `${startResult.message} (${startResult.executablePath})`
@@ -690,9 +1325,9 @@ export const createHybridRobotController = (options: {
     } else {
       steps.push(
         buildRepairStep(
-          "Local Vector brain",
+          "Local bridge",
           "success",
-          "WirePod was already reachable, so no restart was needed."
+          "The local bridge was already reachable, so no restart was needed."
         )
       );
     }
@@ -700,28 +1335,47 @@ export const createHybridRobotController = (options: {
     robot = await refreshWirePodStatus();
     steps.push(
       buildRepairStep(
-        "Detect WirePod",
+        "Detect local bridge",
         lastIntegration.wirePodReachable ? "success" : "fail",
         lastIntegration.wirePodReachable
-          ? `The app can reach WirePod at ${lastIntegration.wirePodBaseUrl}.`
-          : lastIntegration.note || "WirePod is still offline after the repair attempt."
+          ? `The app can reach the local bridge at ${lastIntegration.wirePodBaseUrl}.`
+          : lastIntegration.note || "The local bridge is still offline after the repair attempt."
       )
     );
 
     if (lastIntegration.wirePodReachable) {
-      if (!robot.isConnected) {
-        const serial =
-          robot.serial ||
-          cachedRobot.serial ||
-          getSettings().serial ||
-          getProfile().selectedSerial ||
-          lastIntegration.selectedSerial;
+      if (
+        !lastIntegration.robotReachable &&
+        lastIntegration.note?.toLowerCase().includes("routes are not responding")
+      ) {
+        steps.push(
+          buildRepairStep(
+            "Robot SDK routes",
+            "warn",
+            "The local bridge answered, but its robot SDK routes timed out. Retry connection first, then restart WirePod or the desktop backend if it keeps failing."
+          )
+        );
+      }
 
-        if (serial) {
+      if (!robot.isConnected) {
+        if (savedRobotTarget) {
+          robot = await refreshWirePodStatus(savedRobotTarget);
+          steps.push(
+            buildRepairStep(
+              "Reconnect saved robot",
+              robot.isConnected ? "success" : "warn",
+              robot.isConnected
+                ? `${robot.nickname ?? robot.name} responded after re-targeting the saved robot serial.`
+                : "The saved robot target was applied, but Vector still is not answering local status checks."
+            )
+          );
+        }
+
+        if (!robot.isConnected && savedSerial) {
           try {
-            await wirePod.wake(serial);
+            await wirePod.wake(savedSerial);
             await wait(1_200);
-            robot = await refreshWirePodStatus();
+            robot = await refreshWirePodStatus(savedRobotTarget);
             steps.push(
               buildRepairStep(
                 "Wake robot link",
@@ -740,7 +1394,7 @@ export const createHybridRobotController = (options: {
               )
             );
           }
-        } else {
+        } else if (!robot.isConnected) {
           steps.push(
             buildRepairStep(
               "Wake robot link",
@@ -795,11 +1449,17 @@ export const createHybridRobotController = (options: {
         : lastIntegration.wirePodReachable
           ? "partial"
           : "failed";
+    const bridgeRoutesStalled =
+      lastIntegration.wirePodReachable &&
+      !lastIntegration.robotReachable &&
+      Boolean(lastIntegration.note?.toLowerCase().includes("routes are not responding"));
     const summary =
       overallStatus === "repaired"
         ? `${finalRobot.nickname ?? finalRobot.name} is back online and ready.`
         : overallStatus === "partial"
-          ? "The local brain came back, but Vector still needs attention."
+          ? bridgeRoutesStalled
+            ? "The local bridge is online, but Vector's SDK routes are timing out. Restart WirePod or the desktop backend, then retry connection."
+            : "The local bridge came back, but Vector still needs attention."
           : "Quick repair could not restore the local Vector stack automatically.";
 
     pushLog(
@@ -829,21 +1489,24 @@ export const createHybridRobotController = (options: {
         });
       }
 
-      return refreshWirePodStatus();
+      const robot = await refreshWirePodStatus();
+      return runAutomationHeartbeat(robot);
     },
 
     getIntegrationInfo: () => ({
       ...syncIntegration(),
       note:
         lastIntegration.note ||
-        (lastIntegration.wirePodReachable ? "Connected through local WirePod." : "Vector brain offline")
+        (lastIntegration.wirePodReachable ? "Connected through the local bridge." : "Local bridge offline")
     }),
+
+    getBridgeWatchdogStatus: async () => getCurrentBridgeWatchdogStatus(),
 
     getSettings: () => getSettings(),
 
     updateSettings: (patch) => {
       const nextSettings = store.saveSettings(patch).settings;
-      if (patch.serial) {
+      if (patch.serial !== undefined) {
         store.saveRobotProfile({ selectedSerial: patch.serial });
       }
       syncIntegration();
@@ -857,25 +1520,58 @@ export const createHybridRobotController = (options: {
 
       try {
         const sdkInfo = await wirePod.getSdkInfo();
+        const autoSelectedRobot = resolveAutoSelectedRobot(sdkInfo.robots);
+        const preferredSerial = selectSerial(
+          autoSelectedRobot?.esn,
+          getSettings().serial,
+          getProfile().selectedSerial,
+          lastIntegration.selectedSerial
+        );
+
+        if (autoSelectedRobot) {
+          rememberSelectedRobot(
+            autoSelectedRobot.esn,
+            getProfile().aliases[autoSelectedRobot.esn]
+          );
+        }
+
+        if (preferredSerial) {
+          await refreshWirePodStatus({ serial: preferredSerial }).catch(() => undefined);
+        }
+
         syncIntegration({
           source: "wirepod",
           wirePodReachable: true,
           robotReachable: lastIntegration.robotReachable,
+          selectedSerial: preferredSerial ?? lastIntegration.selectedSerial,
           note: sdkInfo.robots.length
-            ? "Authenticated Vector robots were found through local WirePod."
-            : "WirePod is online, but no authenticated Vector robots were found yet."
+            ? "Authenticated Vector robots were found through the local bridge."
+            : "The local bridge is online, but no authenticated Vector robots were found yet."
         });
         return sdkInfo.robots.map((robot) =>
           toDiscoveredRobot(robot, getProfile().aliases[robot.esn])
         );
       } catch (error) {
+        const fallbackRobots = buildFallbackDiscoveredRobots();
+        const wirePodReachable = Boolean(wirePod.getActiveEndpoint());
+        if (fallbackRobots.length === 1 && fallbackRobots[0]?.serial) {
+          rememberSelectedRobot(fallbackRobots[0].serial, fallbackRobots[0].name);
+        }
         syncIntegration({
           source: "wirepod",
-          wirePodReachable: false,
+          wirePodReachable,
           robotReachable: false,
-          note: error instanceof Error ? error.message : "Vector brain offline"
+          selectedSerial:
+            fallbackRobots.length === 1 ? fallbackRobots[0]?.serial : lastIntegration.selectedSerial,
+          note: fallbackRobots.length
+            ? wirePodReachable
+              ? "The local bridge is online, but robot discovery is not responding. Showing the saved target instead."
+              : "Local bridge offline. Showing the saved target instead."
+            : error instanceof Error
+              ? error.message
+              : "Robot discovery is not responding through the local bridge right now."
         });
-        return [];
+        return fallbackRobots;
       }
     },
 
@@ -897,7 +1593,7 @@ export const createHybridRobotController = (options: {
           nextRobot.isConnected ? "success" : "error",
           nextRobot.isConnected
             ? `Connected to ${nextRobot.nickname ?? nextRobot.name}.`
-            : "Vector brain offline"
+            : lastIntegration.note || nextRobot.currentActivity || "Local bridge offline"
         ),
         nextRobot
       );
@@ -1013,9 +1709,6 @@ export const createHybridRobotController = (options: {
           setBusy("Speaking through Vector.", 9_500);
           const needsWake =
             !robot.isConnected || robot.mood === "sleepy" || robot.connectionState !== "connected";
-          if (chargingProtectionEnabled(robot)) {
-            return blockWhileCharging("speak", { text }, robot, "Speech requests");
-          }
           if (needsWake) {
             await wirePod.wake(serial).catch(() => undefined);
             await wait(1800);
@@ -1038,9 +1731,12 @@ export const createHybridRobotController = (options: {
           const needsWake =
             intent !== "intent_system_sleep" &&
             (!robot.isConnected || robot.mood === "sleepy" || robot.connectionState !== "connected");
+          const safeWhileCharging = isAnimationSafeWhileCharging(intent);
+          const canWakeWhileCharging =
+            safeWhileCharging && (robot.isDocked || robot.isCharging || cachedRobot.isDocked || cachedRobot.isCharging);
           if (
             chargingProtectionEnabled(robot) &&
-            (!isAnimationSafeWhileCharging(intent) || needsWake)
+            (!safeWhileCharging || (needsWake && !canWakeWhileCharging))
           ) {
             return blockWhileCharging(
               "animation",
@@ -1308,7 +2004,10 @@ export const createHybridRobotController = (options: {
       }
 
       return withRealRobot("Starting roam automation.", async (serial, robot) => {
-        if (chargingProtectionEnabled(robot)) {
+        const canArmWhileDocked =
+          chargingProtectionEnabled(robot) && (robot.isDocked || robot.isCharging);
+
+        if (chargingProtectionEnabled(robot) && !canArmWhileDocked) {
           throw new Error(buildChargingProtectionMessage("Roam automation"));
         }
 
@@ -1330,16 +2029,16 @@ export const createHybridRobotController = (options: {
           snapshotsTaken: 0,
           dataPointsCollected: 0,
           batteryStart: robot.batteryPercent,
-          summary: robot.isDocked
-            ? "Roam armed. Take Vector off the charger for wheel movement."
+          summary: robot.isDocked || robot.isCharging
+            ? "Roam armed. Vector will wait on the charger until it is ready to move."
             : `Roam started in ${automation.behavior} mode.`,
           events: [
             {
               id: crypto.randomUUID(),
               createdAt: startedAt,
               type: "status",
-              message: robot.isDocked
-                ? `Roam started for ${automation.targetArea}, but Vector is still docked.`
+              message: robot.isDocked || robot.isCharging
+                ? `Roam started for ${automation.targetArea}, but Vector is still waiting on the charger.`
                 : `Autonomous ${automation.behavior} roam started in ${automation.targetArea}.`,
               batteryPercent: robot.batteryPercent,
               dataPointsCollected: 0
@@ -1462,12 +2161,13 @@ export const createHybridRobotController = (options: {
       }
 
       const robot = await refreshWirePodStatus();
-      const serial =
-        robot.serial ||
-        cachedRobot.serial ||
-        getSettings().serial ||
-        getProfile().selectedSerial ||
-        lastIntegration.selectedSerial;
+      const serial = selectSerial(
+        robot.serial,
+        cachedRobot.serial,
+        getSettings().serial,
+        getProfile().selectedSerial,
+        lastIntegration.selectedSerial
+      );
 
       if (!serial || !robot.cameraAvailable || !lastIntegration.wirePodReachable) {
         return undefined;
@@ -1482,19 +2182,20 @@ export const createHybridRobotController = (options: {
       }
 
       const robot = await refreshWirePodStatus();
-      const serial =
-        robot.serial ||
-        cachedRobot.serial ||
-        getSettings().serial ||
-        getProfile().selectedSerial ||
-        lastIntegration.selectedSerial;
+      const serial = selectSerial(
+        robot.serial,
+        cachedRobot.serial,
+        getSettings().serial,
+        getProfile().selectedSerial,
+        lastIntegration.selectedSerial
+      );
 
       if (!serial) {
         throw new Error("No robot serial is saved yet.");
       }
 
       if (!lastIntegration.wirePodReachable) {
-        throw new Error("Vector brain offline");
+        throw new Error("Local bridge offline");
       }
 
       return wirePod.getImage(serial, photoId, variant) as Promise<CameraImageAsset>;
@@ -1506,12 +2207,13 @@ export const createHybridRobotController = (options: {
       }
 
       const robot = await refreshWirePodStatus();
-      const serial =
-        robot.serial ||
-        cachedRobot.serial ||
-        getSettings().serial ||
-        getProfile().selectedSerial ||
-        lastIntegration.selectedSerial;
+      const serial = selectSerial(
+        robot.serial,
+        cachedRobot.serial,
+        getSettings().serial,
+        getProfile().selectedSerial,
+        lastIntegration.selectedSerial
+      );
 
       if (!serial) {
         throw new Error("No robot serial is saved yet.");
@@ -1561,7 +2263,7 @@ export const createHybridRobotController = (options: {
     repairVoiceSetup: async () =>
       runMockOrThrow(
         () => fallback.repairVoiceSetup() as CommandLogRecord,
-        "Refreshing WirePod voice defaults.",
+        "Refreshing local bridge voice defaults.",
         async (serial, robot) => {
           const targetVolume = await refreshVoiceDefaultsInline(serial, robot);
 
@@ -1570,7 +2272,7 @@ export const createHybridRobotController = (options: {
               "voice-repair",
               { serial, locale: "en-US", wakeWordMode: "Hey Vector", volume: targetVolume },
               "success",
-              "Re-applied WirePod voice defaults: Hey Vector button mode, English (US), and speaker volume."
+              "Re-applied local bridge voice defaults: Hey Vector button mode, English (US), and speaker volume."
             ),
             applyRobotState({
               ...robot,
@@ -1657,6 +2359,45 @@ export const createHybridRobotController = (options: {
       return nextMemory;
     },
 
+    getLearnedCommands: () => getLearnedCommands(),
+
+    saveLearnedCommand: async ({ phrase, targetPrompt }) => {
+      const nextLearnedCommands = upsertLearnedCommand(getLearnedCommands(), phrase, targetPrompt);
+      store.saveLearnedCommands(nextLearnedCommands.commands);
+      pushLog(
+        makeLog(
+          "learned-command-save",
+          {
+            phrase: nextLearnedCommands.record.phrase,
+            targetPrompt: nextLearnedCommands.record.targetPrompt
+          },
+          "success",
+          `Saved learned phrase ${nextLearnedCommands.record.phrase}.`
+        )
+      );
+      return nextLearnedCommands.record;
+    },
+
+    deleteLearnedCommand: async ({ phrase }) => {
+      const nextLearnedCommands = removeLearnedCommand(getLearnedCommands(), phrase);
+      if (!nextLearnedCommands.record) {
+        return undefined;
+      }
+
+      store.saveLearnedCommands(nextLearnedCommands.commands);
+      pushLog(
+        makeLog(
+          "learned-command-delete",
+          {
+            phrase: nextLearnedCommands.record.phrase
+          },
+          "success",
+          `Removed learned phrase ${nextLearnedCommands.record.phrase}.`
+        )
+      );
+      return nextLearnedCommands.record;
+    },
+
     getCommandGaps: () => getCommandGaps(),
 
     recordCommandGap: async (payload) => saveCommandGap(payload),
@@ -1695,7 +2436,11 @@ export const createHybridRobotController = (options: {
         return report;
       }
 
-      const robot = await refreshWirePodStatus();
+      let robot = await refreshWirePodStatus();
+      const savedRobotTarget = buildSavedRobotTarget(robot);
+      if (!robot.isConnected && lastIntegration.wirePodReachable && savedRobotTarget) {
+        robot = await refreshWirePodStatus(savedRobotTarget);
+      }
       const voiceDiagnostics = await buildCurrentVoiceDiagnostics(robot);
       const successLog = latestSuccessfulCommand();
       const failedLog = latestFailedCommand();
@@ -1717,7 +2462,7 @@ export const createHybridRobotController = (options: {
           metric: lastIntegration.wirePodBaseUrl,
           details: lastIntegration.wirePodReachable
             ? "WirePod responded to the local health probe."
-            : "WirePod did not respond. The app will show Vector brain offline until it comes back."
+            : "The local bridge did not respond, so the app is marking the bridge offline until it comes back."
         },
         {
           id: crypto.randomUUID(),
@@ -1726,8 +2471,8 @@ export const createHybridRobotController = (options: {
           status: robot.isConnected ? "pass" : "warn",
           metric: robot.isConnected ? "Online" : "Offline",
           details: robot.isConnected
-            ? "Vector responded through the local WirePod bridge."
-            : lastIntegration.note || "WirePod is online, but the robot is not reachable yet."
+            ? "Vector responded through the local bridge."
+            : lastIntegration.note || "The local bridge is online, but the robot is not reachable yet."
         },
         {
           id: crypto.randomUUID(),
@@ -1851,7 +2596,7 @@ export const createHybridRobotController = (options: {
             : "healthy",
         summary:
           !lastIntegration.wirePodReachable
-            ? "Vector brain offline."
+            ? "Local bridge offline."
             : robot.isConnected
               ? voiceDiagnostics.status === "healthy"
                 ? "Diagnostics passed with the current live robot connection."

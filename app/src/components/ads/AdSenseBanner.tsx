@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef } from "react";
 import { getAdSenseConfig, ensureAdSenseScript } from "@/lib/adsense";
+import { useAppStore } from "@/store/useAppStore";
 
 export function AdSenseBanner() {
   const adElementRef = useRef<HTMLModElement | null>(null);
   const hasRequestedAdRef = useRef(false);
   const config = useMemo(() => getAdSenseConfig(), []);
+  const planAccess = useAppStore((state) => state.settings.planAccess);
 
   useEffect(() => {
-    if (!config.enabled || !adElementRef.current || hasRequestedAdRef.current) {
+    if (!config.enabled || planAccess === "pro" || !adElementRef.current || hasRequestedAdRef.current) {
       return;
     }
 
@@ -26,9 +28,9 @@ export function AdSenseBanner() {
     };
 
     ensureAdSenseScript(config.client, requestAd);
-  }, [config.client, config.enabled]);
+  }, [config.client, config.enabled, planAccess]);
 
-  if (!config.enabled) {
+  if (!config.enabled || planAccess === "pro") {
     return null;
   }
 

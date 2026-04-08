@@ -19,22 +19,24 @@ It exists to make Vector easier to use day-to-day: one app for connection, drive
 
 ## Project Status
 
-This project is active and usable, but still evolving.
+Phase 1 is complete and is now the stable public Windows product.
+Phase 2 is complete as the strong mobile companion milestone.
 
-- Core local dashboard flow works
-- First-run onboarding now handles the easy local WirePod setup inside the app
-- Mock mode is available for testing without a robot
-- WirePod is still required as the local backend bridge
-- Some advanced features are still being refined
-- Current public-testing focus: stable local control, honest status, and an easier first-time setup path
+- Windows installer and portable release builds are part of the normal release path
+- The one-click launcher starts the local app and backend together
+- First-run onboarding, diagnostics, repair flows, and Mock Mode are already in the shipped product
+- WirePod is still required as the local backend bridge for real robot control
+- Current active development is now focused on true one-app independence without breaking the stable Windows or mobile companion releases
+- The backend now has a provider-agnostic local-bridge layer, with the current WirePod implementation living behind that compatibility boundary
 
 ## Release Path
 
-This project now has a Phase 1 Windows release path.
+The current public product is the Phase 1 Windows release.
 
-- Source download: good for advanced users and local testing
-- GitHub Release installer: the intended path for normal Windows testers
-- Long-term goal: one app experience with fewer separate setup steps
+- GitHub Release installer: the intended path for normal Windows users
+- Portable Windows build: useful for quick local testing
+- Source download: still available for advanced users and contributors
+- Android is now a real companion path, though Windows remains the main public product
 
 Phase roadmap:
 
@@ -57,7 +59,7 @@ The intended first mobile version is:
 
 `Phone UI -> LAN / desktop backend -> local WirePod -> Vector`
 
-That keeps the architecture honest while we prepare a real mobile app foundation first.
+That keeps the architecture honest while the Android companion path stays dependable and the project moves toward full Phase 3 independence.
 
 For the current Android path, see:
 
@@ -104,15 +106,19 @@ More screenshots can be added later for photos, routines, and animation workflow
 
 ## How It Works
 
-Architecture:
+Architecture today:
 
 `User -> Vector Control Hub app -> local backend -> local WirePod -> Vector`
 
+Phase 3 direction:
+
+`User -> Vector Control Hub app -> local backend / embedded bridge -> Vector`
+
 Important:
 
-- This app does **not** replace WirePod
-- This app is designed so WirePod stays mostly invisible after setup
-- The frontend does **not** talk directly to random local endpoints; the backend owns the WirePod communication layer
+- This app does **not** fully replace WirePod yet
+- This app is designed so the bridge provider stays mostly invisible after setup
+- The frontend does **not** talk directly to random local endpoints; the backend owns the bridge communication layer
 
 ## Tech Stack
 
@@ -382,8 +388,23 @@ Small local static file server used for the built frontend.
 This repo includes GitHub Actions workflows for:
 
 - validating the app on pushes and pull requests
+- running a daily Android smoke test in an emulator
 - building Windows release artifacts on demand
 - attaching Windows artifacts to tagged GitHub Releases
+
+The daily Android smoke workflow uploads:
+
+- a fresh debug APK
+- a launch screenshot
+- UI dump
+- logcat output
+- a summary JSON that says whether the app booted cleanly
+
+That gives testers a simple daily artifact path even before Play rolls forward.
+
+For the exact tester flow, see:
+
+- [docs/DAILY_TESTING.md](./docs/DAILY_TESTING.md)
 
 If you want to publish a new Windows release, see:
 

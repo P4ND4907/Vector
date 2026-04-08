@@ -2,18 +2,101 @@ import { mockRobotService } from "@/services/mockRobotService";
 import type {
   AiCommandAction,
   AiCommandPreview,
+  CommandGap,
   IntegrationStatus,
+  LearnedCommand,
   Robot,
   VectorCommandCatalogItem
 } from "@/types";
 
+const stripCommandPreamble = (value: string) => {
+  let current = value.trim();
+
+  while (current) {
+    const next = current
+      .replace(/^(?:hey\s+)?vector\s+/i, "")
+      .replace(/^(?:can|could|would|will)\s+you\s+/i, "")
+      .replace(/^(?:please\s+)+/i, "")
+      .trim();
+
+    if (next === current) {
+      return current;
+    }
+
+    current = next;
+  }
+
+  return current;
+};
+
 const normalizePrompt = (value: string) =>
-  value
-    .trim()
-    .toLowerCase()
-    .replace(/['’]/g, "")
-    .replace(/[^\w\s]/g, " ")
-    .replace(/\s+/g, " ");
+  stripCommandPreamble(
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/['’]/g, "")
+      .replace(/[^\w\s]/g, " ")
+      .replace(/\s+/g, " ")
+  );
+
+let mockLearnedCommands: LearnedCommand[] = [];
+let mockCommandGaps: CommandGap[] = [];
+
+const clone = <T,>(value: T) => JSON.parse(JSON.stringify(value)) as T;
+
+const createLearnedCommandRecord = (phrase: string, targetPrompt: string, existing?: LearnedCommand): LearnedCommand => {
+  const normalizedPhrase = normalizePrompt(phrase);
+  const normalizedTargetPrompt = normalizePrompt(targetPrompt);
+  const now = new Date().toISOString();
+
+  return {
+    phrase: phrase.trim(),
+    normalizedPhrase,
+    targetPrompt: targetPrompt.trim(),
+    normalizedTargetPrompt,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
+  };
+};
+
+const pushMockCommandGap = (prompt: string, note: string): CommandGap => {
+  const normalizedPrompt = normalizePrompt(prompt);
+  const latest = mockCommandGaps[0];
+
+  if (latest && latest.normalizedPrompt === normalizedPrompt && latest.note === note) {
+    return latest;
+  }
+
+  const gap: CommandGap = {
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+    source: "ai",
+    prompt: prompt.trim(),
+    normalizedPrompt,
+    category: "unsupported",
+    note
+  };
+
+  mockCommandGaps = [gap, ...mockCommandGaps].slice(0, 40);
+  return gap;
+};
+
+const saveMockLearnedPhrase = (phrase: string, targetPrompt: string): LearnedCommand => {
+  const normalizedPhrase = normalizePrompt(phrase);
+  const existing = mockLearnedCommands.find((item) => item.normalizedPhrase === normalizedPhrase);
+  const record = createLearnedCommandRecord(phrase, targetPrompt, existing);
+
+  mockLearnedCommands = [record, ...mockLearnedCommands.filter((item) => item.normalizedPhrase !== normalizedPhrase)].slice(0, 40);
+  mockCommandGaps = mockCommandGaps.filter((item) => item.normalizedPrompt !== normalizedPhrase);
+  return record;
+};
+
+const removeMockLearnedPhrase = (phrase: string): LearnedCommand | undefined => {
+  const normalizedPhrase = normalizePrompt(phrase);
+  const existing = mockLearnedCommands.find((item) => item.normalizedPhrase === normalizedPhrase);
+  mockLearnedCommands = mockLearnedCommands.filter((item) => item.normalizedPhrase !== normalizedPhrase);
+  return existing;
+};
 
 const buildAction = (
   type: AiCommandAction["type"],
@@ -43,6 +126,25 @@ const parseSegment = (segment: string): AiCommandAction | null => {
 
   if (!normalized) {
     return null;
+  }
+
+  const teachMatch = normalized.match(/^(?:learn|remember|teach(?: vector)?)\s+(?:that\s+)?(.+?)\s+(?:means?|should mean|as)\s+(.+)$/i);
+  if (teachMatch) {
+    return buildAssistant(`Learn "${teachMatch[1]}"`, "teach-command", {
+      phrase: teachMatch[1],
+      targetPrompt: teachMatch[2]
+    });
+  }
+
+  const forgetMatch = normalized.match(/^(?:forget|unlearn|remove)\s+(?:the phrase\s+)?(.+)$/i);
+  if (forgetMatch) {
+    return buildAssistant(`Forget "${forgetMatch[1]}"`, "forget-command", {
+      phrase: forgetMatch[1]
+    });
+  }
+
+  if (/^(?:what have you learned|what did you learn|show learned commands|list learned commands|show custom phrases|list custom phrases)$/.test(normalized)) {
+    return buildAssistant("List learned phrases", "list-learned-commands");
   }
 
   const speakMatch = normalized.match(/^(say|speak)\s+(.+)$/i);
@@ -96,8 +198,16 @@ const parseSegment = (segment: string): AiCommandAction | null => {
     );
   }
 
-  if (/^(?:roll a die|roll die|roll dice)$/.test(normalized)) {
+  if (/^(?:roll a die|roll the die|roll die|roll dice|roll the dice)$/.test(normalized)) {
     return buildAssistant("Roll a die", "roll-die");
+  }
+
+  if (/^(?:flip a coin|flip coin|toss a coin|toss coin|coin flip|heads or tails)$/.test(normalized)) {
+    return buildAssistant("Flip a coin", "flip-coin");
+  }
+
+  if (/^(?:rock paper scissors|play rock paper scissors|lets play rock paper scissors|rps)$/.test(normalized)) {
+    return buildAssistant("Play rock paper scissors", "rock-paper-scissors");
   }
 
   if (
@@ -132,9 +242,27 @@ const parseSegment = (segment: string): AiCommandAction | null => {
   return null;
 };
 
-const createPreviewFromPrompt = (prompt: string): AiCommandPreview => {
+const createPreviewFromPrompt = (prompt: string, depth = 0): AiCommandPreview => {
+  const normalizedPrompt = normalizePrompt(prompt);
+
+  if (depth < 4) {
+    const learnedCommand = mockLearnedCommands.find((item) => item.normalizedPhrase === normalizedPrompt);
+    if (learnedCommand) {
+      const resolvedPreview = createPreviewFromPrompt(learnedCommand.targetPrompt, depth + 1);
+      return {
+        ...resolvedPreview,
+        id: crypto.randomUUID(),
+        prompt
+      };
+    }
+  }
+
   const actions = splitPrompt(prompt).map(parseSegment).filter(Boolean) as AiCommandAction[];
   const warnings = actions.length ? [] : ["Mock mode could not map that command yet."];
+
+  if (!actions.length) {
+    pushMockCommandGap(prompt, warnings[0]);
+  }
 
   return {
     id: crypto.randomUUID(),
@@ -153,6 +281,29 @@ const runAssistantAction = async (action: AiCommandAction, robot: Robot) => {
   const kind = String(action.params.kind ?? "");
 
   switch (kind) {
+    case "teach-command": {
+      const phrase = String(action.params.phrase ?? "").trim();
+      const targetPrompt = String(action.params.targetPrompt ?? "").trim();
+      if (!phrase || !targetPrompt) {
+        return "I still need both the new phrase and the command it should mean.";
+      }
+      saveMockLearnedPhrase(phrase, targetPrompt);
+      return `Got it. I'll remember that ${phrase} means ${targetPrompt}.`;
+    }
+    case "forget-command": {
+      const phrase = String(action.params.phrase ?? "").trim();
+      const removed = phrase ? removeMockLearnedPhrase(phrase) : undefined;
+      return removed
+        ? `Okay. I forgot ${removed.phrase}.`
+        : "I could not find that learned phrase.";
+    }
+    case "list-learned-commands":
+      return mockLearnedCommands.length
+        ? `I know ${mockLearnedCommands
+            .slice(0, 4)
+            .map((item) => `${item.phrase} means ${item.targetPrompt}`)
+            .join(". ")}.`
+        : "I have not learned any custom phrases yet.";
     case "weather": {
       const location = typeof action.params.location === "string" && action.params.location
         ? action.params.location
@@ -161,6 +312,12 @@ const runAssistantAction = async (action: AiCommandAction, robot: Robot) => {
     }
     case "roll-die":
       return `I rolled a ${1 + Math.floor(Math.random() * 6)}.`;
+    case "flip-coin":
+      return Math.random() >= 0.5 ? "Heads." : "Tails.";
+    case "rock-paper-scissors": {
+      const choices = ["rock", "paper", "scissors"];
+      return `Rock, paper, scissors. I choose ${choices[Math.floor(Math.random() * choices.length)]}.`;
+    }
     case "set-user-name":
       return `Got it. I'll remember that your name is ${String(action.params.name ?? "friend")}.`;
     case "time-lookup": {
@@ -181,6 +338,17 @@ export const getMockAiStatus = () => ({
   enabled: false,
   model: "Mock rules parser"
 });
+
+export const getMockLearnedCommands = () => clone(mockLearnedCommands);
+
+export const getMockCommandGaps = () => clone(mockCommandGaps);
+
+export const saveMockLearnedCommand = (phrase: string, targetPrompt: string) => ({
+  item: clone(saveMockLearnedPhrase(phrase, targetPrompt)),
+  items: clone(mockLearnedCommands)
+});
+
+export const deleteMockLearnedCommand = (phrase: string) => clone(removeMockLearnedPhrase(phrase));
 
 export const getMockCommandCatalog = (): {
   items: VectorCommandCatalogItem[];
@@ -225,6 +393,26 @@ export const getMockCommandCatalog = (): {
       summary: "Run a quick game-style dice roll.",
       aliases: ["roll a die", "roll dice"],
       samplePrompt: "roll a die",
+      surfaces: ["voice", "app"]
+    },
+    {
+      key: "coin",
+      title: "Flip A Coin",
+      category: "community",
+      status: "live",
+      summary: "Flip a quick mock coin and hear heads or tails.",
+      aliases: ["flip a coin", "coin flip", "toss a coin"],
+      samplePrompt: "flip a coin",
+      surfaces: ["voice", "app"]
+    },
+    {
+      key: "rps",
+      title: "Rock Paper Scissors",
+      category: "community",
+      status: "live",
+      summary: "Play a quick mock round of rock paper scissors.",
+      aliases: ["rock paper scissors", "play rock paper scissors", "rps"],
+      samplePrompt: "rock paper scissors",
       surfaces: ["voice", "app"]
     },
     {

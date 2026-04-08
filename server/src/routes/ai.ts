@@ -22,6 +22,11 @@ const commandRequestSchema = z.object({
   prompt: z.string().min(2).max(600)
 });
 
+const learnedCommandSchema = z.object({
+  phrase: z.string().trim().min(1).max(120),
+  targetPrompt: z.string().trim().min(1).max(240)
+});
+
 const chatRequestSchema = z.object({
   message: z.string().min(1).max(1200)
 });
@@ -209,6 +214,46 @@ export const createAiRouter = (controller: RobotController, rawEnv: unknown) => 
     });
   });
 
+  router.get("/commands/learned", async (_request: Request, response: Response) => {
+    response.json({
+      items: await controller.getLearnedCommands()
+    });
+  });
+
+  router.post("/commands/learned", async (request: Request, response: Response) => {
+    try {
+      const body = learnedCommandSchema.parse(request.body ?? {});
+      const item = await controller.saveLearnedCommand(body);
+      response.json({
+        item,
+        items: await controller.getLearnedCommands()
+      });
+    } catch (error) {
+      handleRouteError(error, response);
+    }
+  });
+
+  router.delete("/commands/learned/:phrase", async (request: Request, response: Response) => {
+    try {
+      const phrase = z.string().trim().min(1).max(240).parse(request.params.phrase);
+      const item = await controller.deleteLearnedCommand({
+        phrase
+      });
+      response.json({
+        item,
+        items: await controller.getLearnedCommands()
+      });
+    } catch (error) {
+      handleRouteError(error, response);
+    }
+  });
+
+  router.get("/commands/gaps", async (_request: Request, response: Response) => {
+    response.json({
+      items: await controller.getCommandGaps()
+    });
+  });
+
   router.post("/chat", async (request: Request, response: Response) => {
     try {
       const body = chatRequestSchema.parse(request.body ?? {});
@@ -291,7 +336,7 @@ export const createAiRouter = (controller: RobotController, rawEnv: unknown) => 
   router.post("/commands/preview", async (request: Request, response: Response) => {
     try {
       const body = commandRequestSchema.parse(request.body ?? {});
-      const parsed = await previewAiCommand(body.prompt);
+      const parsed = await previewAiCommand(body.prompt, controller);
 
       if (!parsed.canExecute) {
         await controller.recordCommandGap({
@@ -311,7 +356,7 @@ export const createAiRouter = (controller: RobotController, rawEnv: unknown) => 
   router.post("/commands/execute", async (request: Request, response: Response) => {
     try {
       const body = commandRequestSchema.parse(request.body ?? {});
-      const parsed = await previewAiCommand(body.prompt);
+      const parsed = await previewAiCommand(body.prompt, controller);
       if (!parsed.canExecute) {
         await controller.recordCommandGap({
           source: "ai",
