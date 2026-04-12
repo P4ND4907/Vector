@@ -111,7 +111,7 @@ export const createServerApp = (env = buildEnv()) => {
         return;
       }
       if (text.length > 1_000) {
-        response.status(400).json({ message: "text must be 1 000 characters or fewer." });
+        response.status(400).json({ message: "text must be 1,000 characters or fewer." });
         return;
       }
 

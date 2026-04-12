@@ -1,5 +1,12 @@
 # electron-builder configuration for Vector Control Hub
 # Reference: https://www.electron.build/configuration/configuration
+#
+# This is the PACKAGING SKELETON config (packaging/electron/).
+# It uses the compiled electron-main.js from this directory as the entry point,
+# replacing the desktop/main.mjs approach.
+#
+# To use the existing desktop/main.mjs entry point instead, see the root
+# package.json `build` section.
 
 appId: com.vectorcontrolhub.app
 productName: Vector Control Hub
@@ -11,14 +18,13 @@ directories:
   output: ../../dist-electron
 
 files:
-  - desktop/**/*
+  - packaging/electron/electron-main.js
   - app/dist/**/*
   - server/dist/**/*
-  - scripts/serve-static-app.mjs
   - package.json
 
 extraMetadata:
-  main: desktop/main.mjs
+  main: packaging/electron/electron-main.js
 
 asar: true
 
