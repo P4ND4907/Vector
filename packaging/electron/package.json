@@ -1,0 +1,18 @@
+{
+  "name": "vector-control-hub-electron",
+  "version": "0.1.27",
+  "description": "Electron wrapper for Vector Control Hub",
+  "private": true,
+  "main": "electron-main.js",
+  "scripts": {
+    "build:web": "npm run build --workspace app",
+    "build:server": "npm run build --workspace server",
+    "build:electron": "tsc -p tsconfig.json",
+    "dev": "electron .",
+    "dist": "npm run build:web && npm run build:server && npm run build:electron && electron-builder --config electron-builder.yml --win nsis portable"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

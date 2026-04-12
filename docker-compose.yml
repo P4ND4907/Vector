@@ -1,0 +1,86 @@
+# Vector Control Hub – Docker Quick Start
+#
+# Prerequisites: Docker Desktop installed (https://www.docker.com/products/docker-desktop)
+#
+# Quick start (from repository root):
+#   docker compose up -d --build
+#
+# Open the UI at:  http://localhost:4173
+# API health:      http://localhost:8787/health
+# WirePod UI:      http://localhost:8080
+#
+# To stop all services:
+#   docker compose down
+#
+# To wipe all persistent data (volumes):
+#   docker compose down -v
+#
+# Mock Mode (no robot required):
+#   Set VITE_MOCK_MODE=true in the frontend build args below,
+#   or pass VITE_MOCK_MODE=true at build time:
+#     docker compose build --build-arg VITE_MOCK_MODE=true frontend
+#
+# Override WirePod image:
+#   WIREPOD_IMAGE=your-custom/wire-pod:tag docker compose up -d
+
+version: "3.8"
+
+services:
+  # -----------------------------------------------------------------------
+  # WirePod – local robot bridge (required for real Vector control)
+  # Override image via the WIREPOD_IMAGE env var shown in the .env section.
+  # -----------------------------------------------------------------------
+  wirepod:
+    image: ${WIREPOD_IMAGE:-kercre123/wire-pod:latest}
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # WirePod web UI / API
+      - "8070:8070"   # WirePod gRPC port
+    volumes:
+      - wirepod-data:/var/lib/wirepod
+    environment:
+      - TZ=${TZ:-UTC}
+
+  # -----------------------------------------------------------------------
+  # Backend server – Express API built from ./server
+  # -----------------------------------------------------------------------
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - wirepod
+    ports:
+      - "8787:8787"
+    environment:
+      - NODE_ENV=production
+      - PORT=8787
+      - WIREPOD_BASE_URL=http://wirepod:8080
+      - WIREPOD_TIMEOUT_MS=${WIREPOD_TIMEOUT_MS:-4000}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4.1-mini}
+      - DATA_FILE_PATH=/data/vector-data.json
+      - SUPPORT_EMAIL=${SUPPORT_EMAIL:-}
+    volumes:
+      - server-data:/data
+
+  # -----------------------------------------------------------------------
+  # Frontend – Vite build served via nginx on port 4173
+  # -----------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8787}
+        - VITE_MOCK_MODE=${VITE_MOCK_MODE:-false}
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "4173:4173"
+
+volumes:
+  wirepod-data:
+  server-data:

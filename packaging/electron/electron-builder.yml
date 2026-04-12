@@ -1,0 +1,45 @@
+# electron-builder configuration for Vector Control Hub
+# Reference: https://www.electron.build/configuration/configuration
+
+appId: com.vectorcontrolhub.app
+productName: Vector Control Hub
+
+# Resolve paths from the repository root (two levels up from this file)
+directories:
+  app: ../..
+  buildResources: ../../build-resources
+  output: ../../dist-electron
+
+files:
+  - desktop/**/*
+  - app/dist/**/*
+  - server/dist/**/*
+  - scripts/serve-static-app.mjs
+  - package.json
+
+extraMetadata:
+  main: desktop/main.mjs
+
+asar: true
+
+win:
+  target:
+    - nsis
+    - portable
+  # Code signing is NOT configured.
+  # To enable signing, add these fields and set the corresponding secrets:
+  #   certificateFile: ${env.WIN_CERT_FILE}
+  #   certificatePassword: ${env.WIN_CERT_PASSWORD}
+  signAndEditExecutable: false
+  icon: build-resources/icons/vector-control-hub.ico
+
+nsis:
+  artifactName: "Vector-Control-Hub-Setup-${version}-${arch}.${ext}"
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Vector Control Hub
+
+portable:
+  artifactName: "Vector-Control-Hub-Portable-${version}-${arch}.${ext}"

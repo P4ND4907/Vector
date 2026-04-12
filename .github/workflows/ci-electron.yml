@@ -1,0 +1,65 @@
+name: Build Electron Installer (Windows)
+
+# Draft workflow – builds a Windows NSIS installer using electron-builder.
+# Runs when a GitHub Release is published.
+#
+# CODE SIGNING IS NOT CONFIGURED.
+# Windows SmartScreen will show an "unknown publisher" warning for unsigned
+# installers. To add signing:
+#   1. Obtain an EV or OV code-signing certificate (e.g., DigiCert, Sectigo).
+#   2. Add the following repository secrets:
+#        WIN_CERT_BASE64   – base64-encoded .pfx file
+#        WIN_CERT_PASSWORD – pfx password
+#   3. Uncomment the signing block in the "Build installer" step below and
+#      set `win.certificateFile` / `win.certificatePassword` in
+#      packaging/electron/electron-builder.yml.
+#
+# See: https://www.electron.build/code-signing
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  build-windows-installer:
+    name: Build Windows installer
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install all dependencies
+        run: npm ci
+
+      - name: Build frontend (Vite)
+        run: npm run build --workspace app
+
+      - name: Build server (TypeScript)
+        run: npm run build --workspace server
+
+      - name: Build Electron installer
+        # electron-builder is already installed as a root devDependency.
+        # The config lives in packaging/electron/electron-builder.yml.
+        run: npx electron-builder --config packaging/electron/electron-builder.yml --win nsis portable
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Uncomment to enable code signing:
+          # WIN_CERT_BASE64: ${{ secrets.WIN_CERT_BASE64 }}
+          # WIN_CERT_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            dist-electron/*.exe
+            dist-electron/*.zip
+          if-no-files-found: warn
