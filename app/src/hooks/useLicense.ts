@@ -20,8 +20,9 @@ interface LicenseStatusResponse {
 }
 
 interface ActivateResponse {
-  success: boolean;
-  message: string;
+  tier: LicenseTier;
+  activatedAt: string;
+  key: string;
 }
 
 export function useLicense(): LicenseStatus {
@@ -54,16 +55,23 @@ export function useLicense(): LicenseStatus {
     async (key: string): Promise<{ success: boolean; message: string }> => {
       try {
         const data = await postJson<ActivateResponse>("/api/license/activate", { key });
-        if (data.success) {
-          await fetchStatus();
+        const success = data.tier === "pro";
+        if (success) {
+          setTier(data.tier);
+          setActivatedAt(data.activatedAt);
         }
-        return data;
+        return {
+          success,
+          message: success
+            ? `Pro license activated (${data.key})`
+            : "The key was not recognized as a Pro license."
+        };
       } catch (err) {
         const message = err instanceof Error ? err.message : "Activation failed";
         return { success: false, message };
       }
     },
-    [fetchStatus]
+    []
   );
 
   return { tier, activatedAt, features, loading, error, activate, refresh: fetchStatus };
