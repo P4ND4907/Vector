@@ -52,8 +52,9 @@ export const createLicenseStore = (filePath?: string): LicenseStore => {
   };
 
   const clear = (): void => {
-    ensureDir();
-    writeFileSync(resolvedPath, JSON.stringify(null), "utf8");
+    if (existsSync(resolvedPath)) {
+      writeFileSync(resolvedPath, JSON.stringify({}), "utf8");
+    }
   };
 
   return { read, write, clear };

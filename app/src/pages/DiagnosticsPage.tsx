@@ -500,7 +500,7 @@ export function DiagnosticsPage() {
                 onClick={async () => {
                   setRepairLoading("health");
                   try { await runDiagnostics(); setRepairNote("Health refreshed. See the diagnostics results below."); }
-                  catch { setRepairNote("Health refresh failed."); }
+                  catch (error) { setRepairNote(`Health refresh failed: ${error instanceof Error ? error.message : "Unknown error."}`); }
                   finally { setRepairLoading(null); }
                 }}
                 disabled={repairLoading === "health" || diagnosticsState.status === "loading"}
@@ -516,7 +516,7 @@ export function DiagnosticsPage() {
                 onClick={async () => {
                   setRepairLoading("scan");
                   try { await scanForRobots(); setRepairNote("Scan complete. Check the available robots list."); }
-                  catch { setRepairNote("Scan failed. Ensure the local bridge is reachable."); }
+                  catch (error) { setRepairNote(`Scan failed: ${error instanceof Error ? error.message : "Ensure the local bridge is reachable."}`); }
                   finally { setRepairLoading(null); }
                 }}
                 disabled={repairLoading === "scan"}
@@ -532,7 +532,7 @@ export function DiagnosticsPage() {
                 onClick={async () => {
                   setRepairLoading("reconnect");
                   try { await connectRobot(); setRepairNote("Reconnect attempted. Check the status badge above."); }
-                  catch { setRepairNote("Reconnect failed."); }
+                  catch (error) { setRepairNote(`Reconnect failed: ${error instanceof Error ? error.message : "Unknown error."}`); }
                   finally { setRepairLoading(null); }
                 }}
                 disabled={repairLoading === "reconnect"}
@@ -548,7 +548,7 @@ export function DiagnosticsPage() {
                 onClick={async () => {
                   setRepairLoading("disconnect");
                   try { await disconnectRobot(); setRepairNote("Disconnected from the robot."); }
-                  catch { setRepairNote("Disconnect failed."); }
+                  catch (error) { setRepairNote(`Disconnect failed: ${error instanceof Error ? error.message : "Unknown error."}`); }
                   finally { setRepairLoading(null); }
                 }}
                 disabled={repairLoading === "disconnect"}
@@ -564,7 +564,7 @@ export function DiagnosticsPage() {
                 onClick={async () => {
                   setRepairLoading("clear");
                   try { await clearRobot(); setRepairNote("Robot target cleared. Re-scan or re-pair to reconnect."); }
-                  catch { setRepairNote("Clear robot failed."); }
+                  catch (error) { setRepairNote(`Clear robot failed: ${error instanceof Error ? error.message : "Unknown error."}`); }
                   finally { setRepairLoading(null); }
                 }}
                 disabled={repairLoading === "clear"}
@@ -580,7 +580,7 @@ export function DiagnosticsPage() {
                 onClick={async () => {
                   setRepairLoading("reset");
                   try { await resetSettings(); setRepairNote("Settings reset to defaults."); }
-                  catch { setRepairNote("Reset settings failed."); }
+                  catch (error) { setRepairNote(`Reset settings failed: ${error instanceof Error ? error.message : "Unknown error."}`); }
                   finally { setRepairLoading(null); }
                 }}
                 disabled={repairLoading === "reset"}
@@ -599,7 +599,7 @@ export function DiagnosticsPage() {
                     await switchEngineProvider("embedded");
                     setRepairNote("Switched to the embedded engine provider.");
                   }
-                  catch { setRepairNote("Provider switch failed."); }
+                  catch (error) { setRepairNote(`Provider switch failed: ${error instanceof Error ? error.message : "Unknown error."}`); }
                   finally { setRepairLoading(null); }
                 }}
                 disabled={repairLoading === "provider"}
