@@ -55,6 +55,9 @@ export interface AppState extends AppSnapshot {
   addReminder: (title: string, description: string) => void;
   markNotificationRead: (notificationId: string) => void;
   updateSettings: (patch: Partial<AppSettings>) => Promise<void>;
+  clearRobot: () => Promise<void>;
+  resetSettings: () => Promise<void>;
+  switchEngineProvider: (provider: "embedded" | "wirepod" | "external") => Promise<void>;
   recordAiCommandHistory: (item: AiCommandHistoryItem) => void;
   clearLogs: () => void;
   exportState: () => string;

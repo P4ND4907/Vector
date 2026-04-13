@@ -8,6 +8,7 @@ import {
   Cog,
   Gamepad2,
   Home,
+  KeyRound,
   Menu,
   Mic,
   Radar,
@@ -41,6 +42,7 @@ const primaryNavItems: NavItem[] = [
 
 const secondaryNavItems: NavItem[] = [
   { to: "/upgrade", label: "Upgrade", icon: BadgeDollarSign, description: "Plans, checkout hooks, and revenue setup." },
+  { to: "/license", label: "License", icon: KeyRound, description: "Activate a Pro license key." },
   { to: "/speech", label: "Speech", icon: Mic, description: "Speech and voice tools." },
   { to: "/animations", label: "Animate", icon: Sparkles, description: "Animations and face cues." },
   { to: "/automation", label: "Roam", icon: Radar, description: "Autonomous behavior controls." }

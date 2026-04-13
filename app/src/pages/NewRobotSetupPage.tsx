@@ -302,6 +302,7 @@ export function NewRobotSetupPage() {
   const [assistantNote, setAssistantNote] = useState<string>();
   const [workingCandidateId, setWorkingCandidateId] = useState<string>();
   const [setupAnotherRobot, setSetupAnotherRobot] = useState(false);
+  const [selectedEngine, setSelectedEngine] = useState<"embedded" | "wirepod" | "external">("embedded");
   const autoBackendDiscoveryTriggeredRef = useRef(false);
   const autoScanTriggeredRef = useRef(false);
   const autoSetupDeadlineRef = useRef<number | null>(null);
@@ -1191,9 +1192,72 @@ export function NewRobotSetupPage() {
             </CardContent>
           </Card>
 
+          {/* ── Step 1: Welcome ─────────────────────────────────────── */}
           <SetupStepCard
-              number={1}
-              title="Link this phone to your desktop backend"
+            number={1}
+            title="Welcome to Vector Control Hub"
+            summary="This guided flow covers everything from picking your engine to confirming Vector is live."
+            statusLabel="Start here"
+            tone="active"
+          >
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p>
+                You are about to link Vector Control Hub to your robot through a fast 6-step process.
+                Each step unlocks the next so you always know what to do next.
+              </p>
+              <ul className="ml-4 list-disc space-y-1">
+                <li><strong>Step 1 – Welcome</strong>: this overview</li>
+                <li><strong>Step 2 – Choose engine</strong>: pick the local bridge that talks to Vector</li>
+                <li><strong>Step 3 – Scan / manual input</strong>: find Vector on your network</li>
+                <li><strong>Step 4 – Pair</strong>: run the one-time Bluetooth handshake if needed</li>
+                <li><strong>Step 5 – Connect</strong>: save the target and go live</li>
+                <li><strong>Step 6 – Done</strong>: open the dashboard</li>
+              </ul>
+            </div>
+          </SetupStepCard>
+
+          {/* ── Step 2: Choose engine ────────────────────────────────── */}
+          <SetupStepCard
+            number={2}
+            title="Choose your engine"
+            summary="Select the local bridge provider. The embedded engine ships with this app and requires no extra installation."
+            statusLabel={selectedEngine ? selectedEngine.charAt(0).toUpperCase() + selectedEngine.slice(1) : "Choose"}
+            tone={selectedEngine ? "done" : "active"}
+          >
+            <div className="grid gap-2">
+              {(["embedded", "wirepod", "external"] as const).map((provider) => (
+                <button
+                  key={provider}
+                  type="button"
+                  onClick={() => setSelectedEngine(provider)}
+                  className={cn(
+                    "flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition",
+                    selectedEngine === provider
+                      ? "border-primary/40 bg-primary/10"
+                      : "border-[var(--surface-border)] bg-[var(--surface-black)] hover:border-primary/20"
+                  )}
+                >
+                  <div>
+                    <div className="text-sm font-semibold capitalize">
+                      {provider === "embedded" ? "Embedded (default)" : provider === "wirepod" ? "WirePod" : "External endpoint"}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {provider === "embedded"
+                        ? "Built into this app. No extra installation needed. Recommended for new setups."
+                        : provider === "wirepod"
+                          ? "WirePod running separately on your network. Choose this if you manage WirePod yourself."
+                          : "Point the app at any custom HTTP endpoint that speaks the Vector bridge protocol."}
+                    </div>
+                  </div>
+                  {selectedEngine === provider && <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />}
+                </button>
+              ))}
+            </div>
+          </SetupStepCard>
+
+          <SetupStepCard
+              number={3}
+              title="Scan or enter your backend connection"
               summary="The app tries to find your desktop backend on the same Wi-Fi, or you can paste it manually."
             statusLabel={
               mobileBackendNeeded
@@ -1299,13 +1363,11 @@ export function NewRobotSetupPage() {
             </div>
           </SetupStepCard>
 
-          <SetupStepCard
-            number={2}
-            title="Apply the local bridge defaults"
-            summary="The app can finish the safe first-run local defaults for you instead of sending you through extra setup screens."
-            statusLabel={integration.wirePodReachable && localSetupComplete ? "Done" : "Needed"}
-            tone={localBrainTone}
-          >
+          <Card className={cn("overflow-hidden", localBrainTone === "done" ? stepToneClasses.done : localBrainTone === "active" ? stepToneClasses.active : stepToneClasses.blocked)}>
+            <CardHeader>
+              <CardTitle className="text-base">Apply the local bridge defaults</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-black)] p-4 text-sm text-muted-foreground">
                 {integration.wirePodReachable
                   ? localSetupComplete
@@ -1339,11 +1401,12 @@ export function NewRobotSetupPage() {
                 {supportState.status === "loading" ? "Trying quick repair..." : "Quick repair"}
               </Button>
             </div>
-          </SetupStepCard>
+            </CardContent>
+          </Card>
 
           <SetupStepCard
-              number={3}
-              title="Check Bluetooth and look for a pairing-mode robot"
+              number={4}
+              title="Pair your robot"
               summary="Android can scan nearby Bluetooth devices here. The first scan may ask for Nearby Devices permission."
             statusLabel={
               !mobileShellRuntime
@@ -1446,9 +1509,9 @@ export function NewRobotSetupPage() {
           </SetupStepCard>
 
           <SetupStepCard
-            number={4}
-            title="Find your Vector on local Wi-Fi"
-            summary="After the first handshake, discovery should surface the robot here so you can save it for future reconnects."
+            number={5}
+            title="Scan or manually enter your robot's details"
+            summary="Scan local Wi-Fi to find Vector automatically, or type in the serial / IP address if you already have it."
             statusLabel={availableRobots.length || hasSavedTarget ? "Ready" : "Scan next"}
             tone={discoveryTone}
           >
@@ -1487,9 +1550,9 @@ export function NewRobotSetupPage() {
           </SetupStepCard>
 
           <SetupStepCard
-            number={5}
-            title="Save the robot and make future launches simple"
-            summary="Once one robot is saved, the app can reconnect to it on later launches without making normal users think about serial numbers."
+            number={6}
+            title="Connect to Vector"
+            summary="Save the robot target so future launches reconnect automatically. Once Vector is live, open the dashboard."
             statusLabel={setupConnected ? "Done" : hasSavedTarget ? "Ready" : "Waiting"}
             tone={connectTone}
           >
