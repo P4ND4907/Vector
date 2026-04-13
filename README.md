@@ -7,20 +7,22 @@
 
 Vector Control Hub is a local-first dashboard for the Anki / DDL Vector robot.
 
-It exists to make Vector easier to use day-to-day: one app for connection, drive controls, speech, diagnostics, routines, AI command previews, and camera/photo tools, with WirePod staying in the background as the local bridge.
+One app for connection, drive controls, speech, diagnostics, routines, AI command previews, and camera tools — with WirePod as the local bridge.
 
 ## At A Glance
 
 - Built for normal users, not just script-heavy setups
 - Keeps robot control local on your machine
-- Uses WirePod as the backend bridge instead of replacing it
+- Provider-based engine architecture (WirePod, Mock, Embedded*)
 - Includes Mock Mode so the app still works without a robot
 - Runs as a Windows-first local app with a one-click starter
+- Pro tier via local licensing — no internet or Stripe required for activation
+
+> \* Embedded (direct SDK) transport is not yet implemented. The option is present but disabled in the UI.
 
 ## Get Started with Docker
 
-The fastest way to run Vector Control Hub on Windows is with Docker Desktop
-(the only required install):
+The fastest way to run Vector Control Hub on Windows is with Docker Desktop (the only required install):
 
 ```powershell
 # From the repository root:
@@ -36,216 +38,152 @@ No Node.js, WirePod local install, or other prerequisites required.
 > .\scripts\install-windows.ps1 -MockMode
 > ```
 
-Full instructions, troubleshooting, and configuration options are in
-[README.quickstart-docker.md](./README.quickstart-docker.md).
+Full instructions, troubleshooting, and configuration options are in [README.quickstart-docker.md](./README.quickstart-docker.md).
 
-## Project Status
+## How It Works
 
-Phase 1 is complete and is now the stable public Windows product.
-Phase 2 is complete as the strong mobile companion milestone.
+```
+User
+  └─► Vector Control Hub (React frontend)
+        └─► Express backend (Node.js)
+              └─► Engine provider (wirepod | mock | embedded*)
+                    └─► Vector robot
+```
 
-- Windows installer and portable release builds are part of the normal release path
-- The one-click launcher starts the local app and backend together
-- First-run onboarding, diagnostics, repair flows, and Mock Mode are already in the shipped product
-- WirePod is still required as the local backend bridge for real robot control
-- Current active development is now focused on true one-app independence without breaking the stable Windows or mobile companion releases
-- The backend now has a provider-agnostic local-bridge layer, with the current WirePod implementation living behind that compatibility boundary
+The backend owns all robot communication behind a provider abstraction. The frontend never talks directly to WirePod or the robot.
 
-## Release Path
+**API routes:**
 
-The current public product is the Phase 1 Windows release.
+| Prefix | Purpose |
+|---|---|
+| `/api/engine/*` | Engine provider management (status, switch, settings) |
+| `/api/robot/*` | Robot control (drive, speak, camera, diagnostics) |
+| `/api/license/*` | Local license activation and tier status |
 
-- GitHub Release installer: the intended path for normal Windows users
-- Portable Windows build: useful for quick local testing
-- Source download: still available for advanced users and contributors
-- Android is now a real companion path, though Windows remains the main public product
+**Engine providers:**
 
-Phase roadmap:
+| Provider | Status | Notes |
+|---|---|---|
+| `wirepod` | ✅ Default | Recommended. Requires a running WirePod server. |
+| `mock` | ✅ Available | No robot needed. Good for demos and UI testing. |
+| `embedded` | 🚧 Coming soon | Direct SDK transport — not yet implemented. |
 
-- [Phase plan](./docs/PHASES.md)
-- [Release steps](./docs/RELEASING.md)
-- [Mobile foundation](./docs/MOBILE_FOUNDATION.md)
+For full architecture details see [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
 
-## Mobile Direction
+## Onboarding Wizard
 
-The mobile path now has a real Android shell foundation in the repo.
+First-time users are walked through a four-step setup wizard:
 
-- The UI is already responsive
-- The browser build now behaves like an installable PWA with an offline shell
-- Capacitor packages are already included in the app workspace
-- The frontend can now store a manual app-backend URL for a future phone shell
-- The Android project scaffold now lives in `app/android`
-- The Settings screen can show suggested LAN backend URLs from the current desktop machine
+1. **Welcome** — feature overview
+2. **Choose engine** — pick WirePod (recommended), Mock, or Embedded (disabled)
+3. **Connection test** — verify the engine is reachable (non-blocking)
+4. **Complete** — go to the dashboard
 
-The intended first mobile version is:
+The wizard stores its completion flag in `localStorage`. To re-run it: `localStorage.removeItem("vector_onboarding_complete")`.
 
-`Phone UI -> LAN / desktop backend -> local WirePod -> Vector`
+See [docs/ONBOARDING_FLOW.md](./docs/ONBOARDING_FLOW.md) for the full flow.
 
-That keeps the architecture honest while the Android companion path stays dependable and the project moves toward full Phase 3 independence.
+## Pro Tier
 
-For the current Android path, see:
+A Pro license unlocks advanced automation, premium personality packs, advanced repair tools, priority support, and removes ads.
 
-- [docs/MOBILE_ANDROID.md](./docs/MOBILE_ANDROID.md)
+Activation is **fully offline** — no Stripe, no internet call:
 
-## Why This App Exists
+```bash
+POST /api/license/activate   { "key": "PRO-XXXX-XXXX" }
+```
 
-Vector owners often end up bouncing between multiple tools:
-
-- local setup pages
-- robot control pages
-- diagnostics pages
-- scripts or curl commands
-
-This app is meant to reduce that friction. The goal is a single control center that feels approachable for normal users, not just developers.
+A key starting with `PRO-` activates the pro tier and is stored locally in `vector-license.local.json`.
 
 ## Main Features
 
 - Auto-detects local WirePod endpoints
-- Connects to Vector through a local backend
-- Shows live robot status
 - Drive, wake, dock, volume, head, and lift controls
 - AI command preview and execution
 - Diagnostics and log viewer
+- Repair tools and bridge watchdog
 - Local routine storage
 - Camera/photo capture and sync
 - Mock mode for testing when the robot stack is unavailable
 
 ## Screenshots
 
-These captures come from the current Windows build.
-
 | Startup connection | Main dashboard |
 | --- | --- |
 | ![Startup connection](docs/screenshots/startup-connect.png) | ![Main dashboard](docs/screenshots/dashboard-connected.png) |
-| Calm first-run connection flow with honest local-brain status. | Main control center with live-ready status, clear next steps, and quick actions. |
 
 | AI commands | Diagnostics |
 | --- | --- |
 | ![AI commands](docs/screenshots/ai-commands.png) | ![Diagnostics](docs/screenshots/diagnostics-health.png) |
-| Plain-English command composer with previews, examples, and quick status. | Health screen with recovery messaging, voice status, and local troubleshooting context. |
-
-More screenshots can be added later for photos, routines, and animation workflows, but this gallery now shows the real product instead of placeholders.
-
-## How It Works
-
-Architecture today:
-
-`User -> Vector Control Hub app -> local backend -> local WirePod -> Vector`
-
-Phase 3 direction:
-
-`User -> Vector Control Hub app -> local backend / embedded bridge -> Vector`
-
-Important:
-
-- This app does **not** fully replace WirePod yet
-- This app is designed so the bridge provider stays mostly invisible after setup
-- The frontend does **not** talk directly to random local endpoints; the backend owns the bridge communication layer
 
 ## Tech Stack
 
-- Frontend: React, TypeScript, Vite, Tailwind CSS, Zustand
-- Backend: Node.js, Express, Zod
-- Local bridge: WirePod
-- Packaging path: Electron on Windows, with Capacitor Android foundation in `app/android`
+| Layer | Technology |
+|---|---|
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS, Zustand |
+| Backend | Node.js, Express, TypeScript, Zod |
+| Local bridge | WirePod (via HTTP) |
+| Desktop | Electron (Windows) |
+| Mobile | Capacitor (Android, `app/android`) |
+| Container | Docker Compose |
 
-## Privacy And Safety
+## Project Status
 
-By default, this project is local-first.
+Phase 1 (stable Windows release) and Phase 2 (mobile companion) are complete.
 
-Privacy policy:
+- WirePod is still required for real robot control
+- The backend has a provider-agnostic engine layer — WirePod lives behind that boundary
+- Active development is focused on true one-app independence (Phase 3)
 
-- [PRIVACY.md](./PRIVACY.md)
+Phase roadmap: [docs/PHASES.md](./docs/PHASES.md)
 
-What stays local:
+## Mobile Direction
 
-- robot status polling
-- local connection settings
-- saved routines
-- local logs
-- local photo sync data
+The Android shell foundation lives in `app/android` (Capacitor).
 
-What may go to an external API:
+Intended first mobile path: `Phone UI → LAN backend → local WirePod → Vector`
 
-- OpenAI routine drafting or AI assistance, **only if you add your own `OPENAI_API_KEY`**
-- Google AdSense ad delivery on the public hosted web/PWA version, **only if you add your own AdSense publisher and slot IDs**
-
-What you should never do:
-
-- never commit `.env.local`
-- never paste secret keys into frontend code
-- never share a zip of this project without checking whether local config files are inside it
-
-## Requirements
-
-- Windows with Node.js LTS installed
-- WirePod installed locally if you want real robot control
-- A Vector robot already authenticated with your local WirePod setup for the smoothest experience
+See [docs/MOBILE_ANDROID.md](./docs/MOBILE_ANDROID.md) for setup steps.
 
 ## Quick Start
 
-### Best Download Option
+### Easiest launch (Windows)
 
-If you just want to try the app on Windows, use a GitHub Release build when one is available.
+Double-click `start-app.bat` — it installs dependencies, builds if needed, and opens the app.
 
-If you are downloading the source code directly from GitHub instead:
+After code changes: `refresh-app.bat`
 
-- install Node.js 20+
-- extract the repo
-- double-click `start-app.bat`
-
-### Easiest Launch
-
-Use:
-
-- `start-app.bat`
-
-After code changes or local updates, use:
-
-- `refresh-app.bat`
-
-Compatibility launcher:
-
-- `Launch-Vector-Control-Hub.bat`
-
-If you are using the browser build instead of the Windows installer:
-
-- open the app in a Chromium-based browser or Safari
-- use `Settings -> Installable web app`
-- install it to the home screen or desktop as a PWA
-
-Both launchers call the same PowerShell script and do only visible, local startup work:
-
-- verify Node.js is installed
-- install dependencies if missing
-- build the project if needed
-- start the local backend
-- start the local static app server
-- open the app window
-
-### Manual Install
+### Manual install
 
 ```bash
 npm install
+npm start
 ```
 
-### Windows Installer Build
+### Frontend only / Backend only
 
-To build the Windows installer and portable app locally:
+```bash
+npm run dev:app
+npm run dev:server
+```
+
+### Build
+
+```bash
+npm run build
+npm run typecheck
+npm run lint
+npm run test
+```
+
+### Windows installer
 
 ```bash
 npm run release:windows
+# Output: dist-electron/
 ```
 
-That writes installer files to:
-
-```text
-dist-electron/
-```
-
-### Android Shell Foundation
-
-To prepare the Android project after frontend changes:
+### Android shell
 
 ```bash
 npm run mobile:android:doctor
@@ -253,268 +191,91 @@ npm run mobile:android:prepare
 npm run mobile:android:open
 ```
 
-Important:
+## First-Time Connection Flow
 
-- this currently packages the mobile UI shell
-- the backend and WirePod still run on a desktop or LAN machine
-- the phone app should point at a saved backend URL such as `http://192.168.x.x:8787`
+1. Start WirePod locally
+2. Launch Vector Control Hub — the onboarding wizard opens
+3. Select WirePod as your engine
+4. Complete the connection test
+5. Use the dashboard for daily robot control
+
+## Demo / Mock Mode
+
+Run the full UI without a robot. Useful for UI testing, screenshots, and demos.
+
+Switch to Mock in the onboarding wizard or in **Settings → Engine**.
 
 ## Environment Setup
 
-### Frontend
-
-Optional override file:
-
-- `.env.example`
-
-This is only for hosted or unusual frontend setups.
-
-Normal local use does not require changing it.
-
-For hosted web monetization, the frontend can also read:
-
-- `VITE_ADSENSE_CLIENT`
-- `VITE_ADSENSE_SLOT`
-
-Important:
-
-- AdSense is only wired for the public browser/PWA version
-- it stays off on localhost, Electron, and the native mobile shell
-- you still need your site approved in AdSense before real ads will serve
-
 ### Backend
 
-Copy:
-
 ```text
-server/.env.local.example -> server/.env.local
+server/.env.local.example → server/.env.local
 ```
 
-Then update values as needed:
+Key variables:
 
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL`
-- `WIREPOD_BASE_URL`
-- `WIREPOD_TIMEOUT_MS`
+- `OPENAI_API_KEY` — optional, for AI command features
+- `WIREPOD_BASE_URL` — default `http://127.0.0.1:8080`
+- `WIREPOD_TIMEOUT_MS` — default `4000`
 
-Important:
+`server/.env.local` must never be committed.
 
-- `server/.env.local` is for local development only
-- it must never be committed
-- keep secrets in backend env files only
+## Privacy
 
-## Run Instructions
+Local-first by default. See [PRIVACY.md](./PRIVACY.md).
 
-### Start everything locally
-
-```bash
-npm start
-```
-
-### Frontend only
-
-```bash
-npm run dev:app
-```
-
-### Backend only
-
-```bash
-npm run dev:server
-```
-
-## Build Instructions
-
-### Full build
-
-```bash
-npm run build
-```
-
-### Typecheck / lint-style validation
-
-```bash
-npm run typecheck
-npm run lint
-```
-
-### Preview the built app
-
-```bash
-npm run preview
-```
-
-## First-Time Connection Flow
-
-For a normal user, the intended path is:
-
-1. Start WirePod locally
-2. Launch Vector Control Hub
-3. Keep Mock Mode off
-4. If needed, use `Finish local setup automatically` on the startup screen
-5. If the robot has never been paired to WirePod, use `Open robot pairing portal` once for the one-time robot handshake
-6. Scan or reconnect to the saved robot
-7. Open the dashboard once Vector answers
-
-After that, most daily use should happen in this app.
-
-## Demo / Fallback Mode
-
-If WirePod or the robot is unavailable, the app can still run in Mock Mode.
-
-Mock Mode is useful for:
-
-- UI testing
-- screenshots
-- demoing the flow
-- developing without a live robot
-
-If no OpenAI key is present:
-
-- the app should not crash
-- local rule-based command parsing still works for simple AI command flows
-- OpenAI-only features stay unavailable with calm messaging
+What may leave the machine:
+- OpenAI API calls (only if you add your own key)
+- AdSense (only on the public hosted PWA, with your own publisher ID)
 
 ## Project Structure
 
 ```text
-vector-control-hub/
-  app/                React frontend
-  server/             Express backend
-  scripts/            local helper scripts
-  start-app.bat       simple Windows launcher
-  Launch-Vector-Control-Hub.ps1
-  README.md
-  SECURITY.md
-  CONTRIBUTING.md
-  CODE_OF_CONDUCT.md
-  LICENSE
+app/                React frontend
+server/             Express backend
+docs/               Documentation
+scripts/            Local helper scripts
+start-app.bat       Windows launcher
+docker-compose.yml
 ```
 
-## Helper Scripts
+## Documentation
 
-### `start-app.bat`
-
-Windows-friendly launcher that starts the local app stack.
-
-### `Launch-Vector-Control-Hub.ps1`
-
-Main launcher script used by the `.bat` wrappers.
-
-### `scripts/serve-static-app.mjs`
-
-Small local static file server used for the built frontend.
-
-## GitHub Releases
-
-This repo includes GitHub Actions workflows for:
-
-- validating the app on pushes and pull requests
-- running a daily Android smoke test in an emulator
-- building Windows release artifacts on demand
-- attaching Windows artifacts to tagged GitHub Releases
-
-The daily Android smoke workflow uploads:
-
-- a fresh debug APK
-- a launch screenshot
-- UI dump
-- logcat output
-- a summary JSON that says whether the app booted cleanly
-
-That gives testers a simple daily artifact path even before Play rolls forward.
-
-For the exact tester flow, see:
-
-- [docs/DAILY_TESTING.md](./docs/DAILY_TESTING.md)
-
-If you want to publish a new Windows release, see:
-
-- [docs/RELEASING.md](./docs/RELEASING.md)
+| File | Contents |
+|---|---|
+| [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | System design, engine providers, API routes, data storage |
+| [docs/ONBOARDING_FLOW.md](./docs/ONBOARDING_FLOW.md) | Onboarding wizard step-by-step |
+| [docs/REPAIR_TOOLS.md](./docs/REPAIR_TOOLS.md) | Quick repair, bridge watchdog, diagnostic reports |
+| [docs/RELEASE_CHECKLIST.md](./docs/RELEASE_CHECKLIST.md) | Release process checklist |
+| [docs/RELEASING.md](./docs/RELEASING.md) | Full release steps |
+| [docs/PHASES.md](./docs/PHASES.md) | Phase roadmap |
+| [docs/MOBILE_ANDROID.md](./docs/MOBILE_ANDROID.md) | Android shell setup |
 
 ## Troubleshooting
 
-### The app says "Vector brain offline"
+**"Vector brain offline"** — check that WirePod is running, the robot is on the same network, and Mock Mode is off.
 
-Check:
+**AI page unavailable** — `OPENAI_API_KEY` is missing or invalid. Local rule-based commands still work.
 
-1. WirePod is running on this computer
-2. Vector and this computer are on the same local network
-3. Mock Mode is off
-4. The saved serial is correct
+**Robot reacts but won't drive** — check that Vector is off the charger.
 
-### AI page says assistance is unavailable
-
-That usually means `OPENAI_API_KEY` is missing or invalid.
-
-The app should still allow simple local command preview rules without crashing.
-
-### The robot reacts but does not drive
-
-Check whether Vector is still on the charger. Some movement commands can appear limited while docked.
-
-### The robot shows "Docked" but does not keep charging
-
-Check:
-
-1. Vector is seated cleanly on the charger
-2. the charger pins and Vector foot contacts are clean
-3. the app is not being used to wake or drive the robot while it is trying to charge
-
-The app now blocks most wake, movement, photo, and animation actions while charging protection is on, but a weak dock contact or aging battery can still cause real hardware charging problems.
-
-### Weather command works in the app but not from "Hey Vector"
-
-Wake-word weather still depends on a real weather API being configured for WirePod.
-
-You can now configure that from inside the app in `Settings -> Voice weather setup`.
-
-### Camera page shows no photos
-
-Ask Vector to take a photo, then open `Photos` and use `Retrieve latest photo` or `Sync saved photos`.
+**Camera page empty** — ask Vector to take a photo first, then use `Retrieve latest photo`.
 
 ## FAQ
 
-### Do I need WirePod?
+**Do I need WirePod?** Yes, for real robot control today.
 
-Yes, for real local Vector control today.
+**Does this replace WirePod?** No. It sits on top of WirePod and is meant to become the everyday UI.
 
-### Does this app replace WirePod?
+**Does it send data to the cloud?** Not by default. Robot control is local. OpenAI features require your own key.
 
-No. It sits on top of WirePod and is meant to become the everyday UI.
-
-### Does this app send robot data to the cloud?
-
-Not by default. Most robot control stays local. Optional OpenAI features require your own key.
-
-### Is Mock Mode required?
-
-No. It is optional and should only be used when you want a fallback or demo path.
+**Is Mock Mode required?** No. Use it only when you want a demo or fallback path.
 
 ## Known Limitations
 
-- Some advanced roam automation behavior is still being refined
-- Speech and audio behavior may vary depending on the local Vector and WirePod setup
-- Advanced vision and object detection are not finished yet
-- This repo is currently Windows-first in its helper scripts
-- Real robot control still depends on local WirePod in Phase 1
-- Live battery updates currently use fast polling, not a true push/socket stream
-- Some classic or community-style commands still use partial implementations or safe fallbacks
-- On-robot weather visuals are best when WirePod weather is configured; otherwise the app falls back to a simpler robot-side cue plus spoken forecast
-- Docking and charging stability can still be affected by physical charger contact or battery health, which software alone cannot fully fix
-
-## Public Sharing Checklist
-
-Before publishing:
-
-1. Make sure `server/.env.local` is not included
-2. Confirm no secrets are in screenshots
-3. Add screenshots to this README
-4. Verify the launcher still works on a clean machine
-5. Confirm Mock Mode is off in any "real robot" screenshots
-6. Decide whether to share your local IP in screenshots
-7. If you use wake-word weather, set the weather API in-app first so public demos behave consistently
-
-For the longer version, see:
-
-- [docs/PUBLIC_RELEASE_CHECKLIST.md](./docs/PUBLIC_RELEASE_CHECKLIST.md)
+- Embedded (direct SDK) transport is not yet implemented
+- Real robot control still requires WirePod
+- Live battery updates use polling, not a push stream
+- Some classic community commands use safe partial fallbacks
+- Windows is the primary platform; mobile is a companion path
