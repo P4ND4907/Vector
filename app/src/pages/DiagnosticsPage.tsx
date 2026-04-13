@@ -6,10 +6,17 @@ import {
   Bot,
   CheckCircle2,
   ChevronRight,
+  Cpu,
   Mic,
   PlugZap,
   RefreshCw,
-  ShieldCheck
+  RotateCcw,
+  Search,
+  Settings,
+  ShieldCheck,
+  Unplug,
+  Wrench,
+  X
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -61,14 +68,20 @@ export function DiagnosticsPage() {
   const voiceState = useAppStore((state) => state.actionStates.voice);
   const supportState = useAppStore((state) => state.actionStates.support);
   const connectRobot = useAppStore((state) => state.connectRobot);
+  const disconnectRobot = useAppStore((state) => state.disconnectRobot);
   const runDiagnostics = useAppStore((state) => state.runDiagnostics);
   const quickRepair = useAppStore((state) => state.quickRepair);
   const repairVoiceSetup = useAppStore((state) => state.repairVoiceSetup);
   const wakeRobot = useAppStore((state) => state.wakeRobot);
   const scanForRobots = useAppStore((state) => state.scanForRobots);
   const updateSettings = useAppStore((state) => state.updateSettings);
+  const clearRobot = useAppStore((state) => state.clearRobot);
+  const resetSettings = useAppStore((state) => state.resetSettings);
+  const switchEngineProvider = useAppStore((state) => state.switchEngineProvider);
   const [watchdog, setWatchdog] = useState<BridgeWatchdogStatus | undefined>(undefined);
   const [watchdogLoading, setWatchdogLoading] = useState(true);
+  const [repairNote, setRepairNote] = useState<string>();
+  const [repairLoading, setRepairLoading] = useState<string | null>(null);
 
   const latestReport = diagnosticReports[0];
   const latestSupportReport = supportReports[0];
@@ -465,6 +478,154 @@ export function DiagnosticsPage() {
 
         <Card>
           <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Wrench className="h-5 w-5 text-primary" />
+              Repair tools
+            </CardTitle>
+            <CardDescription>
+              All repair actions in one place. Each action is safe to run without losing saved robot data unless you explicitly clear or reset.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {repairNote && (
+              <div className="rounded-2xl border border-sky-400/20 bg-sky-400/8 p-3 text-sm text-sky-100">
+                {repairNote}
+              </div>
+            )}
+            <div className="grid gap-2 sm:grid-cols-2">
+              {/* 1. Refresh health */}
+              <Button
+                variant="outline"
+                className="justify-start gap-2"
+                onClick={async () => {
+                  setRepairLoading("health");
+                  try { await runDiagnostics(); setRepairNote("Health refreshed. See the diagnostics results below."); }
+                  catch (error) { setRepairNote(`Health refresh failed: ${error instanceof Error ? error.message : "Unknown error."}`); }
+                  finally { setRepairLoading(null); }
+                }}
+                disabled={repairLoading === "health" || diagnosticsState.status === "loading"}
+              >
+                <Activity className="h-4 w-4" />
+                {repairLoading === "health" ? "Refreshing…" : "Refresh health"}
+              </Button>
+
+              {/* 2. Scan again */}
+              <Button
+                variant="outline"
+                className="justify-start gap-2"
+                onClick={async () => {
+                  setRepairLoading("scan");
+                  try { await scanForRobots(); setRepairNote("Scan complete. Check the available robots list."); }
+                  catch (error) { setRepairNote(`Scan failed: ${error instanceof Error ? error.message : "Ensure the local bridge is reachable."}`); }
+                  finally { setRepairLoading(null); }
+                }}
+                disabled={repairLoading === "scan"}
+              >
+                <Search className="h-4 w-4" />
+                {repairLoading === "scan" ? "Scanning…" : "Scan again"}
+              </Button>
+
+              {/* 3. Reconnect */}
+              <Button
+                variant="outline"
+                className="justify-start gap-2"
+                onClick={async () => {
+                  setRepairLoading("reconnect");
+                  try { await connectRobot(); setRepairNote("Reconnect attempted. Check the status badge above."); }
+                  catch (error) { setRepairNote(`Reconnect failed: ${error instanceof Error ? error.message : "Unknown error."}`); }
+                  finally { setRepairLoading(null); }
+                }}
+                disabled={repairLoading === "reconnect"}
+              >
+                <RefreshCw className="h-4 w-4" />
+                {repairLoading === "reconnect" ? "Reconnecting…" : "Reconnect"}
+              </Button>
+
+              {/* 4. Disconnect */}
+              <Button
+                variant="outline"
+                className="justify-start gap-2"
+                onClick={async () => {
+                  setRepairLoading("disconnect");
+                  try { await disconnectRobot(); setRepairNote("Disconnected from the robot."); }
+                  catch (error) { setRepairNote(`Disconnect failed: ${error instanceof Error ? error.message : "Unknown error."}`); }
+                  finally { setRepairLoading(null); }
+                }}
+                disabled={repairLoading === "disconnect"}
+              >
+                <Unplug className="h-4 w-4" />
+                {repairLoading === "disconnect" ? "Disconnecting…" : "Disconnect"}
+              </Button>
+
+              {/* 5. Clear robot */}
+              <Button
+                variant="outline"
+                className="justify-start gap-2"
+                onClick={async () => {
+                  setRepairLoading("clear");
+                  try { await clearRobot(); setRepairNote("Robot target cleared. Re-scan or re-pair to reconnect."); }
+                  catch (error) { setRepairNote(`Clear robot failed: ${error instanceof Error ? error.message : "Unknown error."}`); }
+                  finally { setRepairLoading(null); }
+                }}
+                disabled={repairLoading === "clear"}
+              >
+                <X className="h-4 w-4" />
+                {repairLoading === "clear" ? "Clearing…" : "Clear robot"}
+              </Button>
+
+              {/* 6. Reset settings */}
+              <Button
+                variant="outline"
+                className="justify-start gap-2"
+                onClick={async () => {
+                  setRepairLoading("reset");
+                  try { await resetSettings(); setRepairNote("Settings reset to defaults."); }
+                  catch (error) { setRepairNote(`Reset settings failed: ${error instanceof Error ? error.message : "Unknown error."}`); }
+                  finally { setRepairLoading(null); }
+                }}
+                disabled={repairLoading === "reset"}
+              >
+                <RotateCcw className="h-4 w-4" />
+                {repairLoading === "reset" ? "Resetting…" : "Reset settings"}
+              </Button>
+
+              {/* 7. Switch provider */}
+              <Button
+                variant="outline"
+                className="justify-start gap-2"
+                onClick={async () => {
+                  setRepairLoading("provider");
+                  try {
+                    await switchEngineProvider("embedded");
+                    setRepairNote("Switched to the embedded engine provider.");
+                  }
+                  catch (error) { setRepairNote(`Provider switch failed: ${error instanceof Error ? error.message : "Unknown error."}`); }
+                  finally { setRepairLoading(null); }
+                }}
+                disabled={repairLoading === "provider"}
+              >
+                <Cpu className="h-4 w-4" />
+                {repairLoading === "provider" ? "Switching…" : "Switch provider"}
+              </Button>
+
+              {/* 8. Diagnostics display */}
+              <Button
+                variant="outline"
+                className="justify-start gap-2"
+                onClick={() => {
+                  document.getElementById("diagnostics-report")?.scrollIntoView({ behavior: "smooth" });
+                  setRepairNote("Scrolled to the latest diagnostics report below.");
+                }}
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Diagnostics display
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Recent outcomes</CardTitle>
             <CardDescription>See the last good and last failed command without digging through raw logs.</CardDescription>
           </CardHeader>
@@ -514,7 +675,7 @@ export function DiagnosticsPage() {
       </div>
 
       <div className="grid gap-4">
-        <Card>
+        <Card id="diagnostics-report">
           <CardHeader>
             <CardTitle>Latest report</CardTitle>
             <CardDescription>The most recent health report stays readable at a glance.</CardDescription>

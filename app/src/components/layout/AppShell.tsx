@@ -49,6 +49,9 @@ const NotificationsPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage }))
 );
+const LicensePage = lazy(() =>
+  import("@/pages/LicensePage").then((module) => ({ default: module.LicensePage }))
+);
 
 function PageFallback() {
   return (
@@ -120,6 +123,7 @@ export function AppShell() {
               <Route path="/routines" element={<RoutinesPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/license" element={<LicensePage />} />
             </Routes>
           </Suspense>
         </main>

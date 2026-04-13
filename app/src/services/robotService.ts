@@ -1601,3 +1601,27 @@ export const robotService = {
     };
   }
 };
+
+// ─── Engine API ───────────────────────────────────────────────────────────────
+import type { EngineActiveResponse, EngineSwitchResponse, EngineProvider } from "@/types";
+
+export const engineApi = {
+  async getActive(): Promise<EngineActiveResponse> {
+    return getJson<EngineActiveResponse>("/api/engine/active", "Could not read active engine provider.");
+  },
+  async switchProvider(provider: EngineProvider): Promise<EngineSwitchResponse> {
+    return postJson<EngineSwitchResponse>("/api/engine/switch", { provider }, "Switching the engine provider failed.");
+  }
+};
+
+// ─── License API ──────────────────────────────────────────────────────────────
+import type { LicenseStatus, LicenseActivateResult } from "@/types";
+
+export const licenseApi = {
+  async getStatus(): Promise<LicenseStatus> {
+    return getJson<LicenseStatus>("/api/license/status", "Could not read license status.");
+  },
+  async activate(key: string, email?: string): Promise<LicenseActivateResult> {
+    return postJson<LicenseActivateResult>("/api/license/activate", { key, email }, "License activation failed.");
+  }
+};

@@ -6,6 +6,8 @@ import { ZodError } from "zod";
 import { createAppRouter } from "./routes/app.js";
 import { createAiRouter } from "./routes/ai.js";
 import { createDiagnosticsRouter } from "./routes/diagnostics.js";
+import { createEngineRouter } from "./routes/engine.js";
+import { createLicenseRouter } from "./routes/license.js";
 import { createLogRouter } from "./routes/logs.js";
 import { createMonetizationRouter } from "./routes/monetization.js";
 import { createRobotRouter } from "./routes/robot.js";
@@ -35,6 +37,8 @@ export const createServerApp = (env = buildEnv()) => {
   });
 
   app.use("/api/app", createAppRouter(controller));
+  app.use("/api/engine", createEngineRouter());
+  app.use("/api/license", createLicenseRouter());
   app.use("/api/robot", createRobotRouter(controller));
   app.use("/api/routines", createRoutineRouter(controller));
   app.use("/api/logs", createLogRouter(controller));

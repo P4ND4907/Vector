@@ -619,3 +619,52 @@ export interface MonetizationOverview {
   nextMoves: string[];
   status: MonetizationStatus;
 }
+
+
+// ─── Engine provider ──────────────────────────────────────────────────────────
+export type EngineProvider = "embedded" | "wirepod" | "external";
+
+export interface EngineProviderInfo {
+  id: EngineProvider;
+  label: string;
+  description: string;
+  available: boolean;
+}
+
+export interface EngineProvidersResponse {
+  providers: EngineProviderInfo[];
+  active: EngineProvider;
+}
+
+export interface EngineActiveResponse {
+  active: EngineProvider;
+  info: EngineProviderInfo;
+}
+
+export interface EngineSwitchResponse {
+  active: EngineProvider;
+  info: EngineProviderInfo;
+  note: string;
+}
+
+// ─── Licensing ────────────────────────────────────────────────────────────────
+export type LicenseTier = "free" | "pro";
+
+export interface LicenseStatus {
+  active: boolean;
+  tier: LicenseTier;
+  key?: string;
+  email?: string;
+  activatedAt?: string;
+  expiresAt?: string;
+  note: string;
+}
+
+export interface LicenseActivateResult {
+  success: boolean;
+  tier: LicenseTier;
+  key: string;
+  email?: string;
+  activatedAt: string;
+  note: string;
+}

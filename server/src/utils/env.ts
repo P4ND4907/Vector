@@ -63,6 +63,7 @@ export const buildEnv = () => {
     wirePodTimeoutMs: Number(process.env.WIREPOD_TIMEOUT_MS ?? 4000),
     dataFilePath:
       process.env.VECTOR_DATA_FILE ??
-      path.resolve(serverRoot, "data/vector-control-hub.local.json")
+      path.resolve(serverRoot, "data/vector-control-hub.local.json"),
+    engineProvider: process.env.ENGINE_PROVIDER ?? "embedded"
   };
 };

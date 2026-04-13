@@ -79,6 +79,9 @@ export const createSystemActions = (
   | "addReminder"
   | "markNotificationRead"
   | "updateSettings"
+  | "clearRobot"
+  | "resetSettings"
+  | "switchEngineProvider"
   | "recordAiCommandHistory"
   | "importState"
 > => ({
@@ -325,6 +328,43 @@ export const createSystemActions = (
     set((state) => ({
       aiCommandHistory: [item, ...state.aiCommandHistory].slice(0, 20)
     })),
+
+  clearRobot: async () => {
+    await runAction("settings", set, async () => {
+      const state = get();
+      await robotService.updateSettings({ robotSerial: "" }, state.settings, state.integration, state.robot);
+      set((current) => ({
+        settings: { ...current.settings, robotSerial: "" },
+        integration: { ...current.integration, selectedSerial: undefined }
+      }));
+      return "Robot target cleared. The app will need a fresh scan or connection next time.";
+    });
+  },
+
+  resetSettings: async () => {
+    await runAction("settings", set, async () => {
+      const state = get();
+      const result = await robotService.updateSettings({
+        mockMode: false,
+        reconnectOnStartup: true,
+        autoDetectWirePod: true,
+        customWirePodEndpoint: "",
+        pollingIntervalMs: 6000
+      }, state.settings, state.integration, state.robot);
+      set((current) => ({
+        settings: { ...current.settings, ...result.settings }
+      }));
+      return "Settings reset to defaults.";
+    });
+  },
+
+  switchEngineProvider: async (provider: "embedded" | "wirepod" | "external") => {
+    await runAction("settings", set, async () => {
+      const { engineApi } = await import("@/services/robotService");
+      await engineApi.switchProvider(provider);
+      return `Engine provider switched to ${provider}.`;
+    });
+  },
 
   importState: (value) => {
     set((state) => ({
