@@ -6,6 +6,8 @@ import { ZodError } from "zod";
 import { createAppRouter } from "./routes/app.js";
 import { createAiRouter } from "./routes/ai.js";
 import { createDiagnosticsRouter } from "./routes/diagnostics.js";
+import { createEngineRouter } from "./routes/engine.js";
+import { createLicenseRouter } from "./routes/license.js";
 import { createLogRouter } from "./routes/logs.js";
 import { createMonetizationRouter } from "./routes/monetization.js";
 import { createRobotRouter } from "./routes/robot.js";
@@ -13,6 +15,7 @@ import { createRoutineRouter } from "./routes/routines.js";
 import { createSettingsRouter } from "./routes/settings.js";
 import { createSupportRouter } from "./routes/support.js";
 import { createHybridRobotController } from "./robot/hybridRobotController.js";
+import { createEngineManager } from "./engine/engineManager.js";
 import { buildEnv } from "./utils/env.js";
 
 export const createServerApp = (env = buildEnv()) => {
@@ -20,6 +23,11 @@ export const createServerApp = (env = buildEnv()) => {
   const controller = createHybridRobotController({
     wirePodBaseUrl: env.wirePodBaseUrl,
     wirePodTimeoutMs: env.wirePodTimeoutMs,
+    dataFilePath: env.dataFilePath
+  });
+  const engineManager = createEngineManager({
+    wirepodBaseUrl: env.wirePodBaseUrl,
+    wirepodTimeoutMs: env.wirePodTimeoutMs,
     dataFilePath: env.dataFilePath
   });
 
@@ -43,6 +51,8 @@ export const createServerApp = (env = buildEnv()) => {
   app.use("/api/settings", createSettingsRouter(controller));
   app.use("/api/support", createSupportRouter(controller));
   app.use("/api/monetization", createMonetizationRouter(env));
+  app.use("/api/engine", createEngineRouter(controller, env, engineManager));
+  app.use("/api/license", createLicenseRouter(env));
 
   app.get("/vector/status", async (_request: Request, response: Response, next: NextFunction) => {
     try {
