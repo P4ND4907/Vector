@@ -76,12 +76,19 @@ export const createEmbeddedProvider = (): RobotController => {
       }),
     getBridgeWatchdogStatus: () =>
       Promise.resolve({
-        enabled: false,
-        intervalMs: 0,
-        lastCheckedAt: new Date().toISOString(),
-        healthy: false,
-        note: GAP_MESSAGE
-      } as never),
+        observedAt: new Date().toISOString(),
+        overallStatus: "critical" as const,
+        issueCode: "bridge-offline" as const,
+        summary: GAP_MESSAGE,
+        recommendedAction: "Use the wirepod or mock provider instead.",
+        bridgeReachable: false,
+        robotReachable: false,
+        autoRecoveryAvailable: false,
+        autoRecoveryLikelyHelpful: false,
+        connTimerEvents: 0,
+        reconnectEvents: 0,
+        recentEvidence: []
+      }),
     connect: () => Promise.resolve(notConnectedStatus()),
     disconnect: () => Promise.resolve(notConnectedStatus()),
     discoverRobots: () => Promise.resolve([]),

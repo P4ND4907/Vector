@@ -83,8 +83,9 @@ export const createLicenseRouter = (env: BuildEnvResult) => {
       const tier: LicenseTier = key.startsWith("PRO-") ? "pro" : "free";
       const activatedAt = new Date().toISOString();
       const data: LicenseData = { tier, key, activatedAt };
+      const maskedKey = key.length > 4 ? `${key.slice(0, 4)}-****` : "****";
       writeLicense(licenseFilePath, data);
-      response.json({ tier, activatedAt, key });
+      response.json({ tier, activatedAt, key: maskedKey });
     })
   );
 
