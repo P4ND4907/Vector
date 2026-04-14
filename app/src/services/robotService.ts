@@ -510,7 +510,7 @@ export const robotService = {
     return useApiOrFallback(
       async () => {
         const response = await getJson<ServerBootstrapResponse>(
-          "/api/app/bootstrap",
+          "/api/engine/bootstrap",
           "Vector bootstrap data is unavailable."
         );
         return buildBootstrapSnapshot(createBaseSnapshot(), response);
@@ -1034,7 +1034,7 @@ export const robotService = {
     return useApiOrFallback(
       async () => {
         const response = await postJson<{ routine: ServerRoutine }>(
-          "/api/routines",
+          "/api/engine/routines",
           routine,
           "Saving the routine failed."
         );
@@ -1088,7 +1088,7 @@ export const robotService = {
     return useApiOrFallback(
       async () => {
         const response = await getJson<ServerDiagnosticsSnapshot>(
-          "/api/diagnostics",
+          "/api/engine/diagnostics",
           "Diagnostics are unavailable."
         );
         return mapDiagnosticsSnapshot(response, current);
@@ -1101,7 +1101,7 @@ export const robotService = {
     return useApiOrFallback(
       async () => {
         const response = await getJson<BridgeWatchdogApiResponse>(
-          "/api/diagnostics/watchdog",
+          "/api/engine/diagnostics/watchdog",
           "Bridge watchdog status could not be loaded."
         );
         return mapBridgeWatchdogStatus(response.watchdog);
@@ -1114,7 +1114,7 @@ export const robotService = {
     return useApiOrFallback(
       async () => {
         const response = await postJson<DiagnosticsRunResponse>(
-          "/api/diagnostics/run",
+          "/api/engine/diagnostics/run",
           undefined,
           "The diagnostics request did not finish."
         );
@@ -1153,7 +1153,7 @@ export const robotService = {
           integration: cloneSnapshot().integration
         };
         const response = await postJson<VoiceRepairApiResponse>(
-          "/api/diagnostics/voice/repair",
+          "/api/engine/diagnostics/voice/repair",
           undefined,
           "Voice setup repair failed.",
           { timeoutMs: SUPPORT_ACTION_TIMEOUT_MS }
@@ -1178,7 +1178,7 @@ export const robotService = {
     return useApiOrFallback(
       async () => {
         const response = await postJson<QuickRepairApiResponse>(
-          "/api/support/repair",
+          "/api/engine/support/repair",
           undefined,
           "Quick repair failed.",
           { timeoutMs: SUPPORT_ACTION_TIMEOUT_MS }
@@ -1223,7 +1223,7 @@ export const robotService = {
     return useApiOrFallback(
       async () => {
         const response = await postJson<SupportReportApiResponse>(
-          "/api/support/report",
+          "/api/engine/support/report",
           payload,
           "Problem report failed."
         );
@@ -1279,7 +1279,7 @@ export const robotService = {
     return useApiOrFallback(
       async () => {
         const response = await getJson<SupportBundleApiResponse>(
-          "/api/support/bundle",
+          "/api/engine/support/bundle",
           "Support bundle download failed.",
           { timeoutMs: SUPPORT_ACTION_TIMEOUT_MS }
         );
@@ -1339,7 +1339,7 @@ export const robotService = {
     return useApiOrFallback(
       async () => {
         const response = await patchJson<SettingsApiResponse>(
-          "/api/settings",
+          "/api/engine/settings",
           backendPatch,
           "Settings update failed."
         );
@@ -1379,7 +1379,7 @@ export const robotService = {
 
   async getWirePodWeatherConfig(): Promise<WirePodWeatherConfig> {
     return getJson<WirePodWeatherApiResponse>(
-      "/api/settings/bridge/weather",
+      "/api/engine/settings/bridge/weather",
       "WirePod weather settings are unavailable."
     ).then((response) => response.weather);
   },
@@ -1390,7 +1390,7 @@ export const robotService = {
     unit?: string;
   }): Promise<WirePodWeatherConfig> {
     return postJson<WirePodWeatherApiResponse>(
-      "/api/settings/bridge/weather",
+      "/api/engine/settings/bridge/weather",
       payload,
       "WirePod weather settings could not be saved."
     ).then((response) => response.weather);
@@ -1402,7 +1402,7 @@ export const robotService = {
     }
 
     return getJson<WirePodSetupApiResponse>(
-      "/api/settings/bridge/setup",
+      "/api/engine/settings/bridge/setup",
       "WirePod setup details are unavailable."
     ).then((response) => {
       wirePodSetupCache = {
@@ -1420,7 +1420,7 @@ export const robotService = {
   }): Promise<WirePodSetupStatus> {
     clearWirePodSetupCache();
     return postJson<WirePodSetupApiResponse>(
-      "/api/settings/bridge/setup",
+      "/api/engine/settings/bridge/setup",
       payload ?? {},
       "WirePod setup could not be completed.",
       { timeoutMs: WIREPOD_SETUP_TIMEOUT_MS }
@@ -1436,7 +1436,7 @@ export const robotService = {
   async getMobileBackendTargets(): Promise<MobileBackendTarget[]> {
     try {
       const response = await getJson<MobileBackendTargetsApiResponse>(
-        "/api/settings/mobile-targets",
+        "/api/engine/settings/mobile-targets",
         "Mobile backend suggestions are unavailable."
       );
       return response.targets;

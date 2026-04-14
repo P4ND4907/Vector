@@ -1,6 +1,6 @@
 export type ConnectionState = "connected" | "connecting" | "disconnected" | "error";
 export type RobotConnectionSource = "mock" | "wirepod";
-export type LocalBridgeProvider = "wirepod";
+export type LocalBridgeProvider = "embedded" | "wirepod" | "mock";
 export type RobotMood = "ready" | "curious" | "playful" | "charging" | "sleepy" | "focused";
 export type NotificationLevel = "info" | "success" | "warning";
 export type TriggerType = "schedule" | "interval" | "battery-low" | "disconnect" | "manual";

@@ -7,13 +7,13 @@
 
 Vector Control Hub is a local-first dashboard for the Anki / DDL Vector robot.
 
-It exists to make Vector easier to use day-to-day: one app for connection, drive controls, speech, diagnostics, routines, AI command previews, and camera/photo tools, with WirePod staying in the background as the local bridge.
+It exists to make Vector easier to use day-to-day: one app for onboarding, pairing, connection, controls, diagnostics, repair tools, AI command previews, and camera/photo tools through the local Engine.
 
 ## At A Glance
 
 - Built for normal users, not just script-heavy setups
 - Keeps robot control local on your machine
-- Uses WirePod as the backend bridge instead of replacing it
+- Uses an Engine provider system (`embedded` default, `wirepod` legacy compatibility, `mock` demo/testing)
 - Includes Mock Mode so the app still works without a robot
 - Runs as a Windows-first local app with a one-click starter
 
@@ -47,7 +47,7 @@ Phase 2 is complete as the strong mobile companion milestone.
 - Windows installer and portable release builds are part of the normal release path
 - The one-click launcher starts the local app and backend together
 - First-run onboarding, diagnostics, repair flows, and Mock Mode are already in the shipped product
-- WirePod is still required as the local backend bridge for real robot control
+- Embedded Engine is the default user path, with WirePod available as legacy compatibility mode when needed
 - Current active development is now focused on true one-app independence without breaking the stable Windows or mobile companion releases
 - The backend now has a provider-agnostic local-bridge layer, with the current WirePod implementation living behind that compatibility boundary
 
