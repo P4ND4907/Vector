@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { patchJson, postJson } from "@/services/apiClient";
 
 export function EngineSettingsPanel() {
@@ -32,17 +30,19 @@ export function EngineSettingsPanel() {
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="space-y-2">
-          <Label htmlFor="engine-provider">Provider</Label>
-          <Select value={provider} onValueChange={(value: "embedded" | "wirepod" | "mock") => setProvider(value)}>
-            <SelectTrigger id="engine-provider">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="embedded">Embedded (default)</SelectItem>
-              <SelectItem value="wirepod">WirePod (legacy)</SelectItem>
-              <SelectItem value="mock">Mock (demo/testing)</SelectItem>
-            </SelectContent>
-          </Select>
+          <label htmlFor="engine-provider" className="text-sm font-medium">
+            Provider
+          </label>
+          <select
+            id="engine-provider"
+            value={provider}
+            onChange={(event) => setProvider(event.target.value as "embedded" | "wirepod" | "mock")}
+            className="w-full rounded-md border border-[var(--surface-border)] bg-background px-3 py-2 text-sm"
+          >
+            <option value="embedded">Embedded (default)</option>
+            <option value="wirepod">WirePod (legacy)</option>
+            <option value="mock">Mock (demo/testing)</option>
+          </select>
         </div>
         <Button onClick={() => void switchProvider()} disabled={busy}>
           {busy ? "Saving..." : "Switch provider"}

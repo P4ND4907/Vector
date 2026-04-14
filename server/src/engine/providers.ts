@@ -113,7 +113,9 @@ export const createEmbeddedProvider = (controller: RobotController): BridgeProvi
     controller,
     note:
       "Embedded Engine uses local transport. If direct control is unavailable, switch to legacy WirePod compatibility mode.",
-    initMode: () => controller.updateSettings({ mockMode: false }).then(() => undefined)
+    initMode: async () => {
+      await controller.updateSettings({ mockMode: false });
+    }
   });
 
 export const createWirePodProvider = (controller: RobotController): BridgeProvider =>
@@ -121,7 +123,9 @@ export const createWirePodProvider = (controller: RobotController): BridgeProvid
     provider: "wirepod",
     controller,
     note: "Legacy WirePod compatibility mode is active.",
-    initMode: () => controller.updateSettings({ mockMode: false }).then(() => undefined)
+    initMode: async () => {
+      await controller.updateSettings({ mockMode: false });
+    }
   });
 
 export const createMockProvider = (controller: RobotController): BridgeProvider =>
@@ -129,5 +133,7 @@ export const createMockProvider = (controller: RobotController): BridgeProvider 
     provider: "mock",
     controller,
     note: "Mock Engine mode is active for demos and testing.",
-    initMode: () => controller.updateSettings({ mockMode: true }).then(() => undefined)
+    initMode: async () => {
+      await controller.updateSettings({ mockMode: true });
+    }
   });

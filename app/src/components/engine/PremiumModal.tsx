@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getJson, postJson } from "@/services/apiClient";
 
@@ -44,29 +44,33 @@ export function PremiumModal({ open, onOpenChange, onActivated }: PremiumModalPr
     }
   };
 
+  if (!open) {
+    return null;
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Upgrade to Pro</DialogTitle>
-          <DialogDescription>
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4">
+      <Card className="w-full max-w-xl">
+        <CardHeader>
+          <CardTitle>Upgrade to Pro</CardTitle>
+          <CardDescription>
             Pro unlocks advanced controls, automation, priority diagnostics, and upcoming remote access.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3 text-sm">
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
           <p>Simple pricing: Pro starts at $4.99/month. You can activate with a local license key now.</p>
           <Input value={key} onChange={(event) => setKey(event.target.value)} placeholder="VEC-PRO-XXXXXXXX" />
           {message ? <p className="text-muted-foreground">{message}</p> : null}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Later
-          </Button>
-          <Button onClick={() => void activate()} disabled={busy}>
-            {busy ? "Activating..." : "Activate"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Later
+            </Button>
+            <Button onClick={() => void activate()} disabled={busy}>
+              {busy ? "Activating..." : "Activate"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

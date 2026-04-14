@@ -3,8 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { postJson } from "@/services/apiClient";
 
 interface EngineDiscoverResponse {
@@ -110,17 +108,19 @@ export function OnboardingWizard() {
 
           {stepIndex === 1 ? (
             <div className="space-y-2">
-              <Label htmlFor="provider">Engine provider</Label>
-              <Select value={provider} onValueChange={(value: "embedded" | "wirepod" | "mock") => setProvider(value)}>
-                <SelectTrigger id="provider">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="embedded">Embedded (recommended)</SelectItem>
-                  <SelectItem value="wirepod">WirePod (legacy compatibility)</SelectItem>
-                  <SelectItem value="mock">Mock (demo/testing)</SelectItem>
-                </SelectContent>
-              </Select>
+              <label htmlFor="provider" className="text-sm font-medium">
+                Engine provider
+              </label>
+              <select
+                id="provider"
+                value={provider}
+                onChange={(event) => setProvider(event.target.value as "embedded" | "wirepod" | "mock")}
+                className="w-full rounded-md border border-[var(--surface-border)] bg-background px-3 py-2 text-sm"
+              >
+                <option value="embedded">Embedded (recommended)</option>
+                <option value="wirepod">WirePod (legacy compatibility)</option>
+                <option value="mock">Mock (demo/testing)</option>
+              </select>
             </div>
           ) : null}
 
@@ -130,15 +130,21 @@ export function OnboardingWizard() {
                 {busy ? "Scanning..." : "Scan for robots"}
               </Button>
               <div className="space-y-2">
-                <Label htmlFor="serial">Serial</Label>
+                <label htmlFor="serial" className="text-sm font-medium">
+                  Serial
+                </label>
                 <Input id="serial" value={selectedSerial} onChange={(event) => setSelectedSerial(event.target.value)} placeholder="00e20100" />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="ip">IP address</Label>
+                <label htmlFor="ip" className="text-sm font-medium">
+                  IP address
+                </label>
                 <Input id="ip" value={ipAddress} onChange={(event) => setIpAddress(event.target.value)} placeholder="192.168.1.42" />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="name">Robot name</Label>
+                <label htmlFor="name" className="text-sm font-medium">
+                  Robot name
+                </label>
                 <Input id="name" value={name} onChange={(event) => setName(event.target.value)} />
               </div>
               {robots.length ? <p className="text-sm text-muted-foreground">Found: {robots.map((robot) => robot.name).join(", ")}</p> : null}
