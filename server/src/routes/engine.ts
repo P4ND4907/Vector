@@ -1,8 +1,6 @@
 import { Router, type Request, type Response } from "express";
-import path from "node:path";
 import { z } from "zod";
 import { createBridgeProviderManager } from "../engine/bridgeProviderManager.js";
-import { createLicenseService } from "../licensing/licenseService.js";
 import type { RobotController } from "../robot/types.js";
 import { createAiRouter } from "./ai.js";
 import { createAppRouter } from "./app.js";
@@ -41,9 +39,6 @@ const connectSchema = z.object({
 export const createEngineRouter = (controller: RobotController, env: BuildEnvResult) => {
   const router = Router();
   const providers = createBridgeProviderManager(controller, env.dataFilePath);
-  const licenseService = createLicenseService(
-    path.join(path.dirname(path.resolve(env.dataFilePath)), "license.json")
-  );
 
   router.get(
     "/health",
@@ -220,22 +215,6 @@ export const createEngineRouter = (controller: RobotController, env: BuildEnvRes
       });
     })
   );
-
-  router.post(
-    "/license/activate",
-    asyncRoute(async (request, response) => {
-      const payload = z.object({ key: z.string().trim() }).parse(request.body ?? {});
-      response.json({
-        license: licenseService.activate(payload.key)
-      });
-    })
-  );
-
-  router.get("/license/status", (_request, response) => {
-    response.json({
-      license: licenseService.getStatus()
-    });
-  });
 
   router.use("/", createAppRouter(controller));
   router.use("/diagnostics", createDiagnosticsRouter(controller));

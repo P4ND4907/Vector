@@ -26,6 +26,7 @@ export const createServerApp = (env = buildEnv()) => {
     dataFilePath: env.dataFilePath
   });
   const licenseService = createLicenseService(path.resolve(path.dirname(env.dataFilePath), "license.json"));
+  const licenseRouter = createLicenseRouter(licenseService);
 
   app.use(cors());
   app.use(express.json());
@@ -48,7 +49,11 @@ export const createServerApp = (env = buildEnv()) => {
   app.use("/api/settings", createSettingsRouter(controller));
   app.use("/api/support", createSupportRouter(controller));
   app.use("/api/monetization", createMonetizationRouter(env));
-  app.use("/api/license", createLicenseRouter(licenseService));
+  // Keep both paths on purpose:
+  // - /api/license/* is the required public licensing contract.
+  // - /api/engine/license/* lets the frontend stay within /api/engine/* or /api/robot/* only.
+  app.use("/api/engine/license", licenseRouter);
+  app.use("/api/license", licenseRouter);
 
   app.get("/vector/status", async (_request: Request, response: Response, next: NextFunction) => {
     try {

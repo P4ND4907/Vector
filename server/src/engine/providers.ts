@@ -15,7 +15,7 @@ export interface BridgeProvider {
   speak: (payload: { text: string }) => Promise<Awaited<ReturnType<RobotController["speak"]>>>;
   dock: () => Promise<Awaited<ReturnType<RobotController["dock"]>>>;
   wake: () => Promise<Awaited<ReturnType<RobotController["wake"]>>>;
-  sleep: () => Promise<Awaited<ReturnType<RobotController["drive"]>>>;
+  sleep: () => Promise<Awaited<ReturnType<RobotController["dock"]>>>;
   getPhotoList: () => Promise<Awaited<ReturnType<RobotController["getSnapshots"]>>>;
   downloadPhoto: (photoId: string) => Promise<Awaited<ReturnType<RobotController["getPhotoImage"]>>>;
   getDiagnostics: () => Promise<Awaited<ReturnType<RobotController["runDiagnostics"]>>>;
@@ -91,7 +91,7 @@ const createBaseProvider = ({ provider, controller, note, initMode }: BaseProvid
   },
   sleep: async () => {
     await initMode();
-    return controller.drive({ direction: "stop", speed: 0 });
+    return controller.dock();
   },
   getPhotoList: async () => {
     await initMode();

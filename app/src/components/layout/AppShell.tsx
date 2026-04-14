@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
-import { Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AdSenseBanner } from "@/components/ads/AdSenseBanner";
 import { PremiumModal } from "@/components/engine/PremiumModal";
 import { DesktopSidebarPanels, PinnedStatusCard, ToastRail } from "@/components/layout/app-shell-chrome";
@@ -111,12 +111,12 @@ export function AppShell() {
       <div className="min-h-screen px-4 pb-8 pt-4 md:px-6">
         <Suspense fallback={<PageFallback />}>
           <Routes>
-              <Route path="/" element={<StartupEntryPage />} />
-              <Route path="/startup" element={<StartupConnectPage />} />
-              <Route path="/setup/new-robot" element={<NewRobotSetupPage />} />
-              <Route path="/onboarding" element={<NewRobotSetupPage />} />
-            </Routes>
-          </Suspense>
+            <Route path="/" element={<StartupEntryPage />} />
+            <Route path="/startup" element={<StartupConnectPage />} />
+            <Route path="/setup/new-robot" element={<Navigate to="/onboarding" replace />} />
+            <Route path="/onboarding" element={<NewRobotSetupPage />} />
+          </Routes>
+        </Suspense>
 
         <ToastRail toasts={toasts} dismissToast={dismissToast} />
       </div>
@@ -139,7 +139,7 @@ export function AppShell() {
             <Routes>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/startup" element={<StartupConnectPage />} />
-              <Route path="/setup/new-robot" element={<NewRobotSetupPage />} />
+              <Route path="/setup/new-robot" element={<Navigate to="/onboarding" replace />} />
               <Route path="/onboarding" element={<NewRobotSetupPage />} />
               <Route path="/pairing" element={<PairingPage />} />
               <Route path="/drive" element={<DrivePage />} />
@@ -154,7 +154,12 @@ export function AppShell() {
                   proActive ? (
                     <AutomationControlPage />
                   ) : (
-                    <button type="button" className="w-full text-left" onClick={() => setPremiumOpen(true)}>
+                    <button
+                      type="button"
+                      className="w-full text-left"
+                      aria-label="Upgrade to Pro to access Automation features"
+                      onClick={() => setPremiumOpen(true)}
+                    >
                       <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-6">
                         Automation is a Pro feature. Tap to upgrade.
                       </div>
@@ -169,7 +174,12 @@ export function AppShell() {
                   proActive ? (
                     <RoutinesPage />
                   ) : (
-                    <button type="button" className="w-full text-left" onClick={() => setPremiumOpen(true)}>
+                    <button
+                      type="button"
+                      className="w-full text-left"
+                      aria-label="Upgrade to Pro to access Routines features"
+                      onClick={() => setPremiumOpen(true)}
+                    >
                       <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-6">
                         Routines is a Pro feature. Tap to upgrade.
                       </div>

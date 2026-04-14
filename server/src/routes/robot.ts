@@ -108,13 +108,6 @@ export const createRobotRouter = (controller: RobotController) => {
     });
   }));
 
-  router.post("/sleep", asyncRoute(async (_request: Request, response: Response) => {
-    response.json({
-      log: await controller.drive({ direction: "stop", speed: 0 }),
-      robot: await controller.getStatus()
-    });
-  }));
-
   router.post("/mute", asyncRoute(async (request: Request, response: Response) => {
     const body = z.object({ isMuted: z.boolean() }).parse(request.body);
     response.json({
