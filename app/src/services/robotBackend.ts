@@ -294,8 +294,11 @@ export const mapIntegration = (
     source: integration.source ?? fallback?.source ?? "wirepod",
     wirePodReachable: integration.wirePodReachable ?? fallback?.wirePodReachable ?? false,
     wirePodBaseUrl: integration.wirePodBaseUrl || fallback?.wirePodBaseUrl || "http://127.0.0.1:8080",
-    bridgeProvider: integration.bridgeProvider ?? fallback?.bridgeProvider ?? "wirepod",
-    bridgeLabel: integration.bridgeLabel ?? fallback?.bridgeLabel ?? "WirePod compatibility bridge",
+    bridgeProvider: integration.bridgeProvider ?? fallback?.bridgeProvider ?? "embedded",
+    bridgeLabel:
+      integration.bridgeLabel ??
+      fallback?.bridgeLabel ??
+      "Embedded Engine (falls back to WirePod compatibility when needed)",
     bridgeReachable:
       integration.bridgeReachable ??
       integration.wirePodReachable ??

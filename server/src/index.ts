@@ -8,11 +8,14 @@ import { createAiRouter } from "./routes/ai.js";
 import { createDiagnosticsRouter } from "./routes/diagnostics.js";
 import { createLogRouter } from "./routes/logs.js";
 import { createMonetizationRouter } from "./routes/monetization.js";
+import { createEngineRouter } from "./routes/engine.js";
+import { createLicenseRouter } from "./routes/license.js";
 import { createRobotRouter } from "./routes/robot.js";
 import { createRoutineRouter } from "./routes/routines.js";
 import { createSettingsRouter } from "./routes/settings.js";
 import { createSupportRouter } from "./routes/support.js";
 import { createHybridRobotController } from "./robot/hybridRobotController.js";
+import { createLicenseService } from "./licensing/licenseService.js";
 import { buildEnv } from "./utils/env.js";
 
 export const createServerApp = (env = buildEnv()) => {
@@ -22,6 +25,7 @@ export const createServerApp = (env = buildEnv()) => {
     wirePodTimeoutMs: env.wirePodTimeoutMs,
     dataFilePath: env.dataFilePath
   });
+  const licenseService = createLicenseService(path.resolve(path.dirname(env.dataFilePath), "license.json"));
 
   app.use(cors());
   app.use(express.json());
@@ -35,6 +39,7 @@ export const createServerApp = (env = buildEnv()) => {
   });
 
   app.use("/api/app", createAppRouter(controller));
+  app.use("/api/engine", createEngineRouter(controller, env));
   app.use("/api/robot", createRobotRouter(controller));
   app.use("/api/routines", createRoutineRouter(controller));
   app.use("/api/logs", createLogRouter(controller));
@@ -43,6 +48,7 @@ export const createServerApp = (env = buildEnv()) => {
   app.use("/api/settings", createSettingsRouter(controller));
   app.use("/api/support", createSupportRouter(controller));
   app.use("/api/monetization", createMonetizationRouter(env));
+  app.use("/api/license", createLicenseRouter(licenseService));
 
   app.get("/vector/status", async (_request: Request, response: Response, next: NextFunction) => {
     try {
