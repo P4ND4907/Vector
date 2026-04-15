@@ -17,6 +17,28 @@ It exists to make Vector easier to use day-to-day: one app for connection, drive
 - Includes Mock Mode so the app still works without a robot
 - Runs as a Windows-first local app with a one-click starter
 
+## Get Started with Docker
+
+The fastest way to run Vector Control Hub on Windows is with Docker Desktop
+(the only required install):
+
+```powershell
+# From the repository root:
+docker compose up -d --build
+```
+
+Then open **http://localhost:4173** in your browser.
+
+No Node.js, WirePod local install, or other prerequisites required.
+
+> **Mock Mode** – try the full UI without a robot:
+> ```powershell
+> .\scripts\install-windows.ps1 -MockMode
+> ```
+
+Full instructions, troubleshooting, and configuration options are in
+[README.quickstart-docker.md](./README.quickstart-docker.md).
+
 ## Project Status
 
 Phase 1 is complete and is now the stable public Windows product.
