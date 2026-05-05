@@ -36,6 +36,7 @@
     "build": "npm run build --workspace app && npm run build --workspace server",
     "preview": "powershell -ExecutionPolicy Bypass -File ./Launch-Vector-Control-Hub.ps1 -NoOpen",
     "typecheck": "npm run typecheck --workspace app && npm run typecheck --workspace server",
+    "typecheck:all": "npm run typecheck --workspace app && npm run typecheck --workspace server",
     "lint": "npm run typecheck",
     "test": "npm run test --workspace server",
     "test:commands": "npm test --workspace server -- command-engine.test.ts",
