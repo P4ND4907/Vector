@@ -117,7 +117,7 @@ export const monetizationService = {
   async getOverview() {
     try {
       const response = await getJson<MonetizationOverview>(
-        "/api/monetization/overview",
+        "/api/engine/monetization/overview",
         "Monetization details could not be loaded."
       );
       return enrichOverview(response);

@@ -3,7 +3,7 @@ import type { MobileBackendTarget } from "@/types";
 import { getStoredAppBackendUrl } from "@/lib/runtime-target";
 
 const DEFAULT_BACKEND_PORT = 8787;
-const MOBILE_TARGETS_PATH = "/api/settings/mobile-targets";
+const MOBILE_TARGETS_PATH = "/api/engine/settings/mobile-targets";
 const PROBE_CONNECT_TIMEOUT_MS = 1_000;
 const PROBE_READ_TIMEOUT_MS = 1_500;
 const MAX_CONCURRENT_PROBES = 24;

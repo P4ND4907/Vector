@@ -1,5 +1,5 @@
 export type RobotConnectionSource = "mock" | "wirepod";
-export type LocalBridgeProvider = "wirepod";
+export type LocalBridgeProvider = "embedded" | "wirepod" | "mock";
 export type MaybePromise<T> = T | Promise<T>;
 export type SystemStatus = "ready" | "charging" | "docked" | "busy" | "offline" | "error";
 export type LiveUpdateMode = "polling";

@@ -1,7 +1,7 @@
 # Docker Quick Start – Vector Control Hub
 
 This guide lets you run **Vector Control Hub** on Windows using **Docker Desktop only**.  
-You do not need Node.js, WirePod installed locally, or any other prerequisites beyond Docker Desktop.
+You do not need Node.js, a manual WirePod install, or any other prerequisites beyond Docker Desktop.
 
 ---
 
@@ -75,7 +75,7 @@ Append `?mock=true` to the URL: `http://localhost:4173?mock=true`
 |---|---|---|
 | Frontend | http://localhost:4173 | The Vector Control Hub UI |
 | API Server | http://localhost:8787 | Express backend (health: `/health`) |
-| WirePod | http://localhost:8080 | Robot bridge (set up your robot here first) |
+| WirePod (legacy compatibility) | http://localhost:8080 | Legacy compatibility bridge, used only when Engine fallback is needed |
 
 ---
 

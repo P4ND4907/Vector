@@ -11,6 +11,7 @@ import {
   Menu,
   Mic,
   Radar,
+  Wrench,
   Sparkles,
   Stethoscope,
   WandSparkles
@@ -30,13 +31,13 @@ export interface NavItem {
 
 const primaryNavItems: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", mobileLabel: "Home", icon: Home, description: "Main status and fastest controls." },
-  { to: "/pairing", label: "Connect", icon: Bot, description: "Pair, switch, or reconnect a robot." },
+  { to: "/pairing", label: "Connect", icon: Bot, description: "Pair, switch, or reconnect a robot in Engine." },
   { to: "/drive", label: "Controls", icon: Gamepad2, description: "Drive, dock, and move Vector." },
   { to: "/ai", label: "AI", icon: BrainCircuit, description: "Typed commands, previews, and teaching." },
   { to: "/camera", label: "Photos", icon: Camera, description: "Photos and camera tools." },
   { to: "/routines", label: "Routines", icon: WandSparkles, description: "Saved routines and quick actions." },
   { to: "/diagnostics", label: "Health", icon: Stethoscope, description: "Diagnostics and repair tools." },
-  { to: "/settings", label: "Settings", icon: Cog, description: "Backend, theme, and app setup." }
+  { to: "/settings", label: "Settings", icon: Cog, description: "Engine, theme, and app setup." }
 ];
 
 const secondaryNavItems: NavItem[] = [
@@ -44,6 +45,8 @@ const secondaryNavItems: NavItem[] = [
   { to: "/speech", label: "Speech", icon: Mic, description: "Speech and voice tools." },
   { to: "/animations", label: "Animate", icon: Sparkles, description: "Animations and face cues." },
   { to: "/automation", label: "Roam", icon: Radar, description: "Autonomous behavior controls." }
+  ,
+  { to: "/repair-tools", label: "Repair", icon: Wrench, description: "Engine repair and diagnostics actions." }
 ];
 
 const mobilePrimaryNavItems: NavItem[] = [
