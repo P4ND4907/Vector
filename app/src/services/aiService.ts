@@ -83,7 +83,7 @@ const isPersistedMockModeEnabled = () => {
 export const aiService = {
   async getStatus() {
     try {
-      return await getJson<AiStatusResponse>("/api/ai/status", "The AI status check failed.");
+      return await getJson<AiStatusResponse>("/api/engine/ai/status", "The AI status check failed.");
     } catch (error) {
       if (!isPersistedMockModeEnabled()) {
         throw error;
@@ -95,7 +95,7 @@ export const aiService = {
   async getCommandCatalog() {
     try {
       return await getJson<AiCommandCatalogResponse>(
-        "/api/ai/commands/catalog",
+        "/api/engine/ai/commands/catalog",
         "The command catalog could not be loaded."
       );
     } catch (error) {
@@ -109,7 +109,7 @@ export const aiService = {
   async getLearnedCommands() {
     try {
       return await getJson<LearnedCommandsResponse>(
-        "/api/ai/commands/learned",
+        "/api/engine/ai/commands/learned",
         "Learned phrases could not be loaded."
       );
     } catch (error) {
@@ -125,7 +125,7 @@ export const aiService = {
   async saveLearnedCommand(phrase: string, targetPrompt: string) {
     try {
       return await postJson<LearnedCommandsResponse>(
-        "/api/ai/commands/learned",
+        "/api/engine/ai/commands/learned",
         { phrase, targetPrompt },
         "The learned phrase could not be saved."
       );
@@ -159,7 +159,7 @@ export const aiService = {
   async getCommandGaps() {
     try {
       return await getJson<CommandGapsResponse>(
-        "/api/ai/commands/gaps",
+        "/api/engine/ai/commands/gaps",
         "Missed phrases could not be loaded."
       );
     } catch (error) {
@@ -174,7 +174,7 @@ export const aiService = {
 
   async generateRoutineDraft(prompt: string) {
     return postJson<{ routine: AiRoutineDraft }>(
-      "/api/ai/routine-draft",
+      "/api/engine/ai/routine-draft",
       { prompt },
       "The AI request failed."
     );
@@ -183,7 +183,7 @@ export const aiService = {
   async previewCommand(prompt: string) {
     try {
       const response = await postJson<{ parsed: AiCommandPreview }>(
-        "/api/ai/commands/preview",
+        "/api/engine/ai/commands/preview",
         { prompt },
         "The AI command preview failed."
       );
@@ -204,7 +204,7 @@ export const aiService = {
     pauseTelemetry(12_000);
     try {
       const response = await postJson<AiCommandExecuteResponse>(
-        "/api/ai/commands/execute",
+        "/api/engine/ai/commands/execute",
         { prompt },
         "The AI command execution failed.",
         {

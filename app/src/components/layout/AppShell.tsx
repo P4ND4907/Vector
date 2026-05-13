@@ -1,10 +1,12 @@
-import { Suspense, lazy, useMemo } from "react";
-import { Route, Routes, useLocation } from "react-router-dom";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AdSenseBanner } from "@/components/ads/AdSenseBanner";
+import { PremiumModal } from "@/components/engine/PremiumModal";
 import { DesktopSidebarPanels, PinnedStatusCard, ToastRail } from "@/components/layout/app-shell-chrome";
 import { DesktopNav, MobileNav, MobilePageHeader } from "@/components/layout/app-shell-nav";
 import { StartupEntryPage } from "@/pages/StartupEntryPage";
 import { StartupConnectPage } from "@/pages/StartupConnectPage";
+import { getJson } from "@/services/apiClient";
 import { useAppStore } from "@/store/useAppStore";
 
 const DashboardPage = lazy(() =>
@@ -14,7 +16,10 @@ const PairingPage = lazy(() =>
   import("@/pages/PairingPage").then((module) => ({ default: module.PairingPage }))
 );
 const NewRobotSetupPage = lazy(() =>
-  import("@/pages/NewRobotSetupPage").then((module) => ({ default: module.NewRobotSetupPage }))
+  import("@/pages/OnboardingWizard").then((module) => ({ default: module.OnboardingWizard }))
+);
+const RepairToolsPage = lazy(() =>
+  import("@/pages/RepairToolsPage").then((module) => ({ default: module.RepairToolsPage }))
 );
 const DrivePage = lazy(() =>
   import("@/pages/DrivePage").then((module) => ({ default: module.DrivePage }))
@@ -74,6 +79,32 @@ export function AppShell() {
     [notifications]
   );
   const recentLogs = useMemo(() => logs.slice(0, 8), [logs]);
+  const [proActive, setProActive] = useState(false);
+  const [premiumOpen, setPremiumOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getJson<{ license?: { tier: "free" | "pro"; activated: boolean } }>(
+      "/api/engine/license/status",
+      "License status could not be loaded."
+    )
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+        const license = response.license;
+        setProActive(Boolean(license?.activated && license?.tier === "pro"));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProActive(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [premiumOpen]);
 
   if (isStartupRoute) {
     return (
@@ -82,7 +113,8 @@ export function AppShell() {
           <Routes>
             <Route path="/" element={<StartupEntryPage />} />
             <Route path="/startup" element={<StartupConnectPage />} />
-            <Route path="/setup/new-robot" element={<NewRobotSetupPage />} />
+            <Route path="/setup/new-robot" element={<Navigate to="/onboarding" replace />} />
+            <Route path="/onboarding" element={<NewRobotSetupPage />} />
           </Routes>
         </Suspense>
 
@@ -107,7 +139,8 @@ export function AppShell() {
             <Routes>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/startup" element={<StartupConnectPage />} />
-              <Route path="/setup/new-robot" element={<NewRobotSetupPage />} />
+              <Route path="/setup/new-robot" element={<Navigate to="/onboarding" replace />} />
+              <Route path="/onboarding" element={<NewRobotSetupPage />} />
               <Route path="/pairing" element={<PairingPage />} />
               <Route path="/drive" element={<DrivePage />} />
               <Route path="/ai" element={<AiCommandsPage />} />
@@ -115,11 +148,48 @@ export function AppShell() {
               <Route path="/speech" element={<SpeechPage />} />
               <Route path="/animations" element={<AnimationsPage />} />
               <Route path="/diagnostics" element={<DiagnosticsPage />} />
-              <Route path="/automation" element={<AutomationControlPage />} />
+              <Route
+                path="/automation"
+                element={
+                  proActive ? (
+                    <AutomationControlPage />
+                  ) : (
+                    <button
+                      type="button"
+                      className="w-full text-left"
+                      aria-label="Upgrade to Pro to access Automation features"
+                      onClick={() => setPremiumOpen(true)}
+                    >
+                      <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-6">
+                        Automation is a Pro feature. Tap to upgrade.
+                      </div>
+                    </button>
+                  )
+                }
+              />
               <Route path="/camera" element={<CameraPage />} />
-              <Route path="/routines" element={<RoutinesPage />} />
+              <Route
+                path="/routines"
+                element={
+                  proActive ? (
+                    <RoutinesPage />
+                  ) : (
+                    <button
+                      type="button"
+                      className="w-full text-left"
+                      aria-label="Upgrade to Pro to access Routines features"
+                      onClick={() => setPremiumOpen(true)}
+                    >
+                      <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-6">
+                        Routines is a Pro feature. Tap to upgrade.
+                      </div>
+                    </button>
+                  )
+                }
+              />
               <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/repair-tools" element={<RepairToolsPage />} />
             </Routes>
           </Suspense>
         </main>
@@ -132,6 +202,15 @@ export function AppShell() {
       <AdSenseBanner />
 
       <MobileNav />
+
+      <PremiumModal
+        open={premiumOpen}
+        onOpenChange={setPremiumOpen}
+        onActivated={() => {
+          setPremiumOpen(false);
+          setProActive(true);
+        }}
+      />
 
       <ToastRail toasts={toasts} dismissToast={dismissToast} />
     </div>
