@@ -46,6 +46,9 @@ const readEnvValue = (
 
 const stripQuotes = (value: string) => value.trim().replace(/^["']|["']$/g, "");
 
+const isAbsoluteFilePath = (filePath: string) =>
+  path.isAbsolute(filePath) || /^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith("\\\\");
+
 const parseIni = (text: string): IniSections => {
   const sections: IniSections = { default: {} };
   let current = "default";
@@ -134,7 +137,7 @@ const sectionToCredentials = (
     serial: sanitizeRobotSerial(section.serial || section.esn || sectionName),
     host: section.ip || section.host || section.address,
     token: section.guid || section.token || section.authorization,
-    certPath: cert && path.isAbsolute(cert) ? cert : cert ? path.resolve(configDirectory, cert) : undefined
+    certPath: cert && isAbsoluteFilePath(cert) ? cert : cert ? path.resolve(configDirectory, cert) : undefined
   };
 };
 
