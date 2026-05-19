@@ -38,7 +38,7 @@
     "typecheck": "npm run typecheck --workspace app && npm run typecheck --workspace server",
     "lint": "npm run typecheck",
     "test": "npm run test --workspace server",
-    "test:commands": "npm test --workspace server -- command-engine.test.ts",
+    "test:commands": "npm run test:commands --workspace server",
     "test:pandora": "node --test ./scripts/pandora-release-gate.test.mjs",
     "test:ui": "npm run test --workspace app",
     "test:coverage": "npm run test --workspace server && npm run test --workspace app",

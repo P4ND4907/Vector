@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
     "lint": "npm run typecheck",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts",
+    "test:commands": "node --import tsx --test test/command-engine.test.ts"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.14.3",
