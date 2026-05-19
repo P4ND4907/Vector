@@ -9,7 +9,7 @@ WORKDIR /build
 
 # Install dependencies first (layer cache)
 COPY package.json package-lock.json* ./
-RUN npm ci --ignore-scripts
+RUN npm install --ignore-scripts
 
 # Copy source and compile TypeScript
 COPY tsconfig.json ./
@@ -25,7 +25,7 @@ ENV NODE_ENV=production
 
 # Only install production dependencies
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+RUN npm install --omit=dev --ignore-scripts && npm cache clean --force
 
 # Copy compiled output from builder stage
 COPY --from=builder /build/dist ./dist

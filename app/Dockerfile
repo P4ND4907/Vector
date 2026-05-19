@@ -16,7 +16,7 @@ ENV VITE_MOCK_MODE=$VITE_MOCK_MODE
 
 # Install dependencies first (layer cache)
 COPY package.json package-lock.json* ./
-RUN npm ci --ignore-scripts
+RUN npm install --ignore-scripts
 
 # Copy source files and build
 COPY . .
