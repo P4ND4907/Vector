@@ -29,7 +29,7 @@ test("loads direct Vector credentials from SDK config", async () => {
   const credentials = await readDirectVectorCredentials({
     env: {},
     homeDir: "C:/Users/test",
-    exists: (filePath) => filePath.endsWith(".anki_vector\\sdk_config.ini"),
+    exists: (filePath) => filePath.replace(/\\/g, "/").endsWith(".anki_vector/sdk_config.ini"),
     readFile: async () => `
 [00305a8c]
 name = Vector-A1B2
