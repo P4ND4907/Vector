@@ -431,6 +431,7 @@ export const initialSnapshot: AppSnapshot = {
     autoDetectWirePod: true,
     customWirePodEndpoint: "",
     savedWirePodEndpoint: "",
+    bridgeProviderPreference: "embedded",
     mockMode: true,
     reconnectOnStartup: true,
     protectChargingUntilFull: true,

@@ -41,6 +41,7 @@ const normalizePrompt = (value: string) =>
 
 let mockLearnedCommands: LearnedCommand[] = [];
 let mockCommandGaps: CommandGap[] = [];
+let mockConversationMemory: Array<{ key: string; value: string; createdAt: string; updatedAt: string }> = [];
 
 const clone = <T,>(value: T) => JSON.parse(JSON.stringify(value)) as T;
 
@@ -147,6 +148,22 @@ const parseSegment = (segment: string): AiCommandAction | null => {
     return buildAssistant("List learned phrases", "list-learned-commands");
   }
 
+  if (/^(?:learning inbox|show learning inbox|what did you miss|what phrases did you miss|what should i teach you|learn from mistakes|show missed phrases|review missed phrases)$/.test(normalized)) {
+    return buildAssistant("Review missed phrases", "learning-inbox");
+  }
+
+  const rememberFactMatch = segment.match(/^(?:remember|remember that|please remember that)\s+(.+)$/i);
+  if (rememberFactMatch) {
+    return buildAssistant("Remember a conversation note", "save-conversation-memory", {
+      key: "conversation.note",
+      value: rememberFactMatch[1].trim()
+    });
+  }
+
+  if (/^(?:what do you remember|what do you know about me|show memory|show memories|list memories|what have you remembered)$/.test(normalized)) {
+    return buildAssistant("Review saved conversation memory", "list-conversation-memory");
+  }
+
   const speakMatch = normalized.match(/^(say|speak)\s+(.+)$/i);
   if (speakMatch) {
     return buildAction("speak", `Speak "${speakMatch[2]}"`, { text: speakMatch[2] });
@@ -175,6 +192,16 @@ const parseSegment = (segment: string): AiCommandAction | null => {
 
   if (/^wake( up)?/.test(normalized)) {
     return buildAction("wake", "Wake Vector", {});
+  }
+
+  if (/^(?:go play|play by yourself|do your own thing|entertain yourself|wander around|undock and explore|wake up and explore|start autonomous mode|start auto mode|turn on autonomous mode|start self play|self play|go be autonomous)$/.test(normalized)) {
+    return buildAssistant("Start autonomous play", "autonomous-play", {
+      behavior: "explore"
+    });
+  }
+
+  if (/^(?:talk to yourself|say something to yourself|think out loud|keep yourself company|say a robot thought)$/.test(normalized)) {
+    return buildAssistant("Say a small robot thought", "self-talk");
   }
 
   if (
@@ -218,11 +245,30 @@ const parseSegment = (segment: string): AiCommandAction | null => {
     return buildAction("photo", "Take a photo and sync the latest image", {});
   }
 
-  const setNameMatch = normalized.match(/^my name is\s+(.+)$/i);
+  const setNameMatch = normalized.match(/^(?:my name is|remember my name is|please remember my name is|call me|you can call me|i am|im)\s+(.+)$/i);
   if (setNameMatch) {
     return buildAssistant(`Remember your name as ${setNameMatch[1]}`, "set-user-name", {
       name: setNameMatch[1]
     });
+  }
+
+  if (
+    /^(?:whats my name|what is my name|who am i|whoami|who am eye|do you know who i am|do you know my name|do you remember my name|tell me my name|what do you call me|who do you think i am)$/.test(
+      normalized
+    )
+  ) {
+    return buildAssistant("Recall your saved name", "get-user-name");
+  }
+
+  if (
+    /^(?:forget everyone|forget all people|clear saved people|clear saved faces|reset saved faces|reset face memory|reset person memory|start fresh for next person|start fresh with the next person|new person mode)$/.test(
+      normalized
+    )
+  ) {
+    return buildAssistant(
+      "Clear saved people and prepare to learn the next person",
+      "reset-person-memory"
+    );
   }
 
   if (/^(?:what time is it|current time|tell me the time)$/.test(normalized)) {
@@ -304,6 +350,27 @@ const runAssistantAction = async (action: AiCommandAction, robot: Robot) => {
             .map((item) => `${item.phrase} means ${item.targetPrompt}`)
             .join(". ")}.`
         : "I have not learned any custom phrases yet.";
+    case "learning-inbox":
+      return mockCommandGaps.length
+        ? `I have ${mockCommandGaps.length} missed phrase${mockCommandGaps.length === 1 ? "" : "s"} to learn from. Open Ask to teach them safely.`
+        : "No missed phrases are waiting right now.";
+    case "save-conversation-memory": {
+      const key = String(action.params.key ?? "conversation.note");
+      const value = String(action.params.value ?? "").trim();
+      if (value) {
+        const now = new Date().toISOString();
+        mockConversationMemory = [{ key, value, createdAt: now, updatedAt: now }, ...mockConversationMemory].slice(0, 20);
+      }
+      return value ? `I saved that locally: ${value}.` : "Tell me what to remember first.";
+    }
+    case "list-conversation-memory":
+      return mockConversationMemory.length
+        ? `Here is what I remember locally. ${mockConversationMemory.slice(0, 3).map((item) => item.value).join(". ")}.`
+        : "I do not have conversation memories saved yet.";
+    case "self-talk":
+      return "Tiny robot thought of the day: staying curious is a valid operating mode.";
+    case "autonomous-play":
+      return "Mock autonomous play started. Vector will explore safely and store the session locally.";
     case "weather": {
       const location = typeof action.params.location === "string" && action.params.location
         ? action.params.location
@@ -320,6 +387,10 @@ const runAssistantAction = async (action: AiCommandAction, robot: Robot) => {
     }
     case "set-user-name":
       return `Got it. I'll remember that your name is ${String(action.params.name ?? "friend")}.`;
+    case "get-user-name":
+      return "I do not know your name yet. Try saying my name is and then your name.";
+    case "reset-person-memory":
+      return "Saved people were cleared. Vector is ready to learn the next person.";
     case "time-lookup": {
       const now = new Date().toLocaleTimeString("en-US", {
         hour: "numeric",
@@ -424,6 +495,36 @@ export const getMockCommandCatalog = (): {
       aliases: ["take a photo", "take a selfie"],
       samplePrompt: "take a photo",
       surfaces: ["camera", "app"]
+    },
+    {
+      key: "autonomous_play",
+      title: "Autonomous Play",
+      category: "community",
+      status: "live",
+      summary: "Starts a safe mock roam using the same automation controls.",
+      aliases: ["go play", "do your own thing", "start auto mode"],
+      samplePrompt: "go play",
+      surfaces: ["motion", "voice", "memory"]
+    },
+    {
+      key: "learning_inbox",
+      title: "Learning Inbox",
+      category: "assistant",
+      status: "live",
+      summary: "Reviews missed phrases so they can be taught safely.",
+      aliases: ["show missed phrases", "what did you miss", "learning inbox"],
+      samplePrompt: "show missed phrases",
+      surfaces: ["voice", "app", "memory"]
+    },
+    {
+      key: "conversation_memory",
+      title: "Conversation Memory",
+      category: "assistant",
+      status: "live",
+      summary: "Saves simple mock conversation facts locally.",
+      aliases: ["remember that I like chess", "what do you remember"],
+      samplePrompt: "remember that I like chess",
+      surfaces: ["voice", "app", "memory"]
     }
   ];
 

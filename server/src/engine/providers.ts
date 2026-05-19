@@ -1,4 +1,5 @@
 import type { RobotController } from "../robot/types.js";
+import { createDirectVectorProvider } from "../services/directVectorProvider.js";
 import type { BridgeProviderName, PairingRecord } from "./stores.js";
 
 export interface BridgeProvider {
@@ -34,11 +35,13 @@ const createBaseProvider = ({ provider, controller, note, initMode }: BaseProvid
   },
   health: async () => {
     await initMode();
+    const robot = await controller.getStatus();
     const integration = await controller.getIntegrationInfo();
+    const bridgeReachable = Boolean(integration.bridgeReachable ?? integration.wirePodReachable);
     return {
-      ok: provider === "mock" ? true : Boolean(integration.wirePodReachable),
+      ok: provider === "mock" ? true : provider === "embedded" ? Boolean(robot.isConnected || bridgeReachable) : bridgeReachable,
       provider,
-      note
+      note: integration.note || robot.currentActivity || note
     };
   },
   discoverRobots: async () => {
@@ -117,6 +120,55 @@ export const createEmbeddedProvider = (controller: RobotController): BridgeProvi
       await controller.updateSettings({ mockMode: false });
     }
   });
+
+export const createDirectProvider = (controller: RobotController): BridgeProvider => {
+  const direct = createDirectVectorProvider();
+
+  return {
+    init: async () => {
+      await controller.updateSettings({ mockMode: false, bridgeProviderPreference: "direct" });
+    },
+    health: async () => {
+      await controller.updateSettings({ mockMode: false, bridgeProviderPreference: "direct" });
+      const credentialStatus = await direct.getCredentialStatus();
+      if (!credentialStatus.ok) {
+        return {
+          ok: false,
+          provider: "direct",
+          note: credentialStatus.note
+        };
+      }
+
+      const robot = await direct.getStatus();
+      return {
+        ok: robot.isConnected,
+        provider: "direct",
+        note: robot.isConnected
+          ? "Direct Vector SDK is connected."
+          : robot.currentActivity || "Direct Vector SDK credentials are present, but Vector is offline."
+      };
+    },
+    discoverRobots: () => direct.discoverRobots(),
+    pairRobot: async (payload) => ({
+      ok: true,
+      message: "Direct SDK pairing details saved locally. Direct mode uses SDK env/config credentials for secure auth.",
+      pairing: payload
+    }),
+    connect: (payload) => direct.connect(payload),
+    disconnect: () => direct.disconnect(),
+    getStatus: () => direct.getStatus(),
+    drive: (payload) => direct.drive(payload),
+    setHeadAngle: (payload) => direct.head(payload),
+    setLiftHeight: (payload) => direct.lift(payload),
+    speak: (payload) => direct.speak(payload),
+    dock: () => direct.dock(),
+    wake: () => direct.wake(),
+    sleep: async () => controller.dock(),
+    getPhotoList: async () => controller.getSnapshots(),
+    downloadPhoto: async (photoId) => controller.getPhotoImage(photoId, "full"),
+    getDiagnostics: async () => controller.runDiagnostics()
+  };
+};
 
 export const createWirePodProvider = (controller: RobotController): BridgeProvider =>
   createBaseProvider({

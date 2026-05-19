@@ -1,21 +1,19 @@
 # Improvement Audit
 
-Last reviewed: 2026-04-05
+Last reviewed: 2026-05-12
 
 ## Local health snapshot
 
 Checks run locally from the repo root:
 
-- `npm run typecheck --workspace app`
-- `npm run typecheck --workspace server`
-- `npm run build --workspace app`
-- `npm run build --workspace server`
+- `npm.cmd run verify:ci`
 - `npm audit --omit=dev`
 
 Current result:
 
 - App typecheck: passing
 - Server typecheck: passing
+- Command engine tests: passing
 - App build: passing
 - Server build: passing
 - Production dependency audit: `0 vulnerabilities`

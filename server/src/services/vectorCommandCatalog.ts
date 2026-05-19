@@ -209,9 +209,66 @@ const commandCatalog: VectorCommandCatalogItemRecord[] = [
     category: "control",
     status: "live",
     summary: "Starts, pauses, resumes, stops, and checks patrol automation from shared voice and typed commands.",
-    aliases: ["start patrol", "pause patrol", "resume patrol", "stop patrol", "automation status"],
+    aliases: ["start patrol", "pause patrol", "resume patrol", "stop patrol", "automation status", "start auto mode"],
     samplePrompt: "start patrol",
     surfaces: ["motion", "voice", "app"]
+  },
+  {
+    key: "autonomous_play",
+    title: "Autonomous play",
+    category: "community",
+    status: "live",
+    summary: "Starts a safe explore-style roam using the same stored session, auto-dock, and local learning path as the Automation page.",
+    aliases: ["go play", "do your own thing", "entertain yourself", "undock and explore", "start autonomous mode"],
+    samplePrompt: "go play",
+    surfaces: ["motion", "voice", "memory"],
+    note: "Movement still respects charging protection and safe return, so Vector will not roam when the app thinks the charger should be protected."
+  },
+  {
+    key: "obstacle_courses",
+    title: "Obstacle course learning",
+    category: "assistant",
+    status: "live",
+    summary: "Learns short, named obstacle courses as local app-only routines and replays them with capped movement steps.",
+    aliases: [
+      "learn obstacle course desk: forward 2 seconds, turn left, say done",
+      "run obstacle course desk",
+      "list obstacle courses"
+    ],
+    samplePrompt: "learn obstacle course desk: forward 2 seconds, turn left, say done",
+    surfaces: ["motion", "voice", "app", "memory"],
+    note: "Courses are stored locally and only run through this app. This is guided route replay, not autonomous mapping."
+  },
+  {
+    key: "learning_inbox",
+    title: "Learning inbox",
+    category: "assistant",
+    status: "live",
+    summary: "Reviews missed phrases captured from failed commands so users can teach new shortcuts without guessing.",
+    aliases: ["learning inbox", "what did you miss", "show missed phrases", "what should I teach you", "learn from mistakes"],
+    samplePrompt: "show missed phrases",
+    surfaces: ["voice", "app", "memory"]
+  },
+  {
+    key: "conversation_memory",
+    title: "Conversation memory",
+    category: "assistant",
+    status: "live",
+    summary: "Saves simple conversation facts locally and lets Vector recall what it knows without cloud training.",
+    aliases: ["remember that I like chess", "what do you remember", "show memories", "what do you know about me"],
+    samplePrompt: "remember that I like chess",
+    surfaces: ["voice", "app", "memory"],
+    note: "Memory is local-first. It is not uploaded to a shared service or used to train a public model."
+  },
+  {
+    key: "self_talk",
+    title: "Self talk",
+    category: "community",
+    status: "live",
+    summary: "Lets Vector say a small playful thought without starting wheel movement.",
+    aliases: ["talk to yourself", "think out loud", "keep yourself company", "say a robot thought"],
+    samplePrompt: "talk to yourself",
+    surfaces: ["face", "voice"]
   },
   {
     key: "cube_fetch",

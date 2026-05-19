@@ -98,6 +98,7 @@ export interface ServerSettings {
   autoDetectWirePod: boolean;
   customWirePodEndpoint: string;
   savedWirePodEndpoint: string;
+  bridgeProviderPreference: AppSettings["bridgeProviderPreference"];
   mockMode: boolean;
   reconnectOnStartup: boolean;
   protectChargingUntilFull: boolean;
@@ -276,6 +277,7 @@ export const mapSettings = (settings: ServerSettings, fallback: AppSettings): Ap
   autoDetectWirePod: settings.autoDetectWirePod,
   customWirePodEndpoint: settings.customWirePodEndpoint,
   savedWirePodEndpoint: settings.savedWirePodEndpoint,
+  bridgeProviderPreference: settings.bridgeProviderPreference ?? fallback.bridgeProviderPreference,
   mockMode: settings.mockMode,
   reconnectOnStartup: settings.reconnectOnStartup,
   protectChargingUntilFull: settings.protectChargingUntilFull,

@@ -1,11 +1,21 @@
 export type ConnectionState = "connected" | "connecting" | "disconnected" | "error";
-export type RobotConnectionSource = "mock" | "wirepod";
-export type LocalBridgeProvider = "embedded" | "wirepod" | "mock";
+export type RobotConnectionSource = "mock" | "wirepod" | "direct";
+export type LocalBridgeProvider = "embedded" | "direct" | "wirepod" | "mock";
+export type BridgeProviderPreference = "auto" | "embedded" | "wirepod" | "direct";
 export type RobotMood = "ready" | "curious" | "playful" | "charging" | "sleepy" | "focused";
 export type NotificationLevel = "info" | "success" | "warning";
 export type TriggerType = "schedule" | "interval" | "battery-low" | "disconnect" | "manual";
 export type RepeatType = "once" | "hourly" | "daily" | "custom";
-export type RoutineActionType = "speak" | "animation" | "dock" | "mute" | "notify" | "stop";
+export type RoutineActionType =
+  | "speak"
+  | "animation"
+  | "dock"
+  | "mute"
+  | "notify"
+  | "stop"
+  | "drive"
+  | "wait"
+  | "botlab-marker";
 export type ThemeMode = "dark" | "light";
 export type ColorTheme = "vector" | "midnight" | "ice";
 export type StartupBehavior = "dashboard" | "last-screen" | "connect";
@@ -262,6 +272,68 @@ export interface CameraSyncResult {
   latestSnapshot?: CameraSnapshot;
   syncedCount: number;
   note?: string;
+  emailBatch?: {
+    attempted: boolean;
+    configured: boolean;
+    sent: boolean;
+    exported: boolean;
+    deletedLocal: boolean;
+    deletedRemote: boolean;
+    count: number;
+    exportPath?: string;
+    message: string;
+  };
+}
+
+export type BotLabRunResult = "success" | "partial" | "failed";
+
+export interface BotLabMarkerModule {
+  id: string;
+  title: string;
+  markerId: number;
+  pack: string;
+  trainingValue: string;
+  centerXyMm?: [number, number];
+}
+
+export interface BotLabMission {
+  id: string;
+  title: string;
+  pack: string;
+  difficulty: number;
+  required: string[];
+  learns: string[];
+  goal: string;
+  success: string;
+  pro?: boolean;
+}
+
+export interface BotLabMarkerResolution {
+  markerId: number;
+  known: boolean;
+  module?: BotLabMarkerModule;
+  mapping?: {
+    tile: string;
+    behavior: string;
+  };
+  suggestedAction?: string;
+  message: string;
+}
+
+export interface BotLabRunRecord {
+  missionId: string;
+  result: BotLabRunResult;
+  timestamp: string;
+  sessionId?: string;
+  note?: string;
+}
+
+export interface BotLabManifest {
+  starter: BotLabMarkerModule[];
+  expansions: BotLabMarkerModule[];
+  missions: BotLabMission[];
+  markerMap: Record<string, { tile: string; behavior: string }>;
+  note: string;
 }
 
 export interface VisionEvent {
@@ -449,6 +521,7 @@ export interface AppSettings {
   autoDetectWirePod: boolean;
   customWirePodEndpoint: string;
   savedWirePodEndpoint: string;
+  bridgeProviderPreference: BridgeProviderPreference;
   mockMode: boolean;
   reconnectOnStartup: boolean;
   protectChargingUntilFull: boolean;

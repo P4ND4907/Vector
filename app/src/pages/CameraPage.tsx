@@ -52,6 +52,8 @@ export function CameraPage() {
               <img
                 alt={latestSnapshot.label}
                 className="aspect-video w-full object-cover"
+                decoding="sync"
+                loading="eager"
                 src={latestPreviewSrc}
               />
             ) : (
@@ -126,7 +128,13 @@ export function CameraPage() {
           <CardContent className="space-y-3">
             {snapshots.map((snapshot) => (
               <div key={snapshot.id} className="flex gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-                <img alt={snapshot.label} className="h-16 w-24 rounded-xl object-cover" src={snapshot.dataUrl} />
+                <img
+                  alt={snapshot.label}
+                  className="h-16 w-24 rounded-xl object-cover"
+                  decoding="async"
+                  loading="lazy"
+                  src={snapshot.dataUrl}
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <div className="font-semibold">{snapshot.label}</div>

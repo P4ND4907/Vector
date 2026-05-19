@@ -301,6 +301,34 @@ body {
 }
 
 @media (max-width: 768px) {
+  html,
+  body {
+    background-attachment: scroll;
+  }
+
+  body {
+    background-size: 56px 56px;
+  }
+
+  .panel,
+  .vector-adsense-frame,
+  .backdrop-blur,
+  .backdrop-blur-xl {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .panel {
+    box-shadow:
+      0 0 0 1px var(--panel-glow),
+      0 12px 28px rgba(0, 0, 0, 0.22);
+  }
+
+  img {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
+
   .vector-adsense-shell {
     bottom: 78px;
   }

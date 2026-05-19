@@ -6,7 +6,7 @@ Use this pack to recruit enough testers for Google Play closed testing.
 
 - At least 12 testers opted in to the closed test.
 - Keep at least 12 testers opted in for 14 continuous days.
-- If testing starts on April 6, 2026, the earliest safe target date to apply for production is April 20, 2026.
+- The earliest safe target date to apply for production is after 14 continuous full days with at least 12 opted-in testers. For example, if testing starts on May 12, 2026, the earliest safe target date is May 26, 2026.
 
 Official references:
 
@@ -20,6 +20,7 @@ Replace these placeholders:
 - `[OPT_IN_LINK]`
 - `[APP_NAME]`
 - `[SHORT_APP_DESC]`
+- `[TEST_END_DATE]`
 - `[YOUR_EMAIL]`
 
 Recommended communities:
@@ -52,7 +53,7 @@ This app is for Vector robot owners and people willing to help test Android clos
 What I need:
 - opt in with the Play closed testing link
 - install the app
-- keep it installed through at least April 20, 2026
+- keep it installed through at least [TEST_END_DATE]
 - open it a few times during the test period
 
 Closed test opt-in:
@@ -85,7 +86,7 @@ Current focus:
 What I need from testers:
 - opt in with the Google Play closed test link
 - install the app
-- keep it installed through at least April 20, 2026
+- keep it installed through at least [TEST_END_DATE]
 - use it a few times and message me any bugs you hit
 
 Closed test link:
@@ -105,7 +106,7 @@ If you are willing to help, please:
 1. open this closed test link
 2. opt in
 3. install the app from Google Play
-4. keep it installed through at least April 20, 2026
+4. keep it installed through at least [TEST_END_DATE]
 5. open it a few times during the test
 
 Link:
@@ -117,7 +118,7 @@ If you are testing your own app too, send me your link and I can test back.
 ## Comment Reply Template
 
 ```text
-Thank you, I appreciate it. Once you opt in and install, please keep it installed through at least April 20, 2026 so the Play closed test stays valid on my side.
+Thank you, I appreciate it. Once you opt in and install, please keep it installed through at least [TEST_END_DATE] so the Play closed test stays valid on my side.
 ```
 
 ## Follow-Up Message
@@ -127,7 +128,7 @@ Send this around day 7:
 ```text
 Quick thank you for testing [APP_NAME].
 
-Please keep the app installed and open it once in a while through at least April 20, 2026. Google Play requires 14 continuous days of closed testing before production unlocks.
+Please keep the app installed and open it once in a while through at least [TEST_END_DATE]. Google Play requires 14 continuous days of closed testing before production unlocks.
 ```
 
 ## Tracking Checklist
@@ -138,10 +139,10 @@ Please keep the app installed and open it once in a while through at least April
 - Track who says "joined"
 - Confirm at least 12 opted in inside Play Console
 - Aim for 20 to 30 recruits in case some drop
-- Check the tester count daily until April 20, 2026
+- Check the tester count daily until [TEST_END_DATE]
 
 ## Recommended Fill-In Values
 
 - `[APP_NAME]`: `Vector Companion`
 - `[SHORT_APP_DESC]`: `A mobile companion app for Vector that helps with setup, reconnecting, commands, diagnostics, and daily control from one dashboard.`
-
+- `[TEST_END_DATE]`: choose a date at least 14 full days after the closed test starts, such as `May 26, 2026` for a May 12, 2026 start.

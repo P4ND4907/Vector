@@ -40,7 +40,7 @@ export function PinnedStatusCard({
     <Card className="overflow-hidden">
       <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
         <div className="space-y-2">
-          <div className="eyebrow">Pinned status</div>
+          <div className="eyebrow">Live status</div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold">{robot.nickname ?? robot.name}</h1>
             <Badge className={statusTone[systemStatus.toneKey]}>{systemStatus.label}</Badge>
@@ -61,13 +61,13 @@ export function PinnedStatusCard({
 
         <div className="flex flex-wrap items-center gap-2">
           <Link to="/drive">
-            <Button>Open controls</Button>
+            <Button>Control</Button>
           </Link>
           <Link to="/ai">
-            <Button variant="outline">AI commands</Button>
+            <Button variant="outline">Ask</Button>
           </Link>
           <Link to="/diagnostics">
-            <Button variant="outline">Diagnostics</Button>
+            <Button variant="outline">Fix</Button>
           </Link>
         </div>
       </CardContent>

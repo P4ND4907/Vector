@@ -9,17 +9,21 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
     "lint": "npm run typecheck",
-    "test": "node --import tsx --test test/command-engine.test.ts"
+    "test": "node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
+    "@grpc/grpc-js": "^1.14.3",
+    "@grpc/proto-loader": "^0.8.1",
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "nodemailer": "^8.0.7",
     "zod": "^3.24.3"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^22.14.1",
+    "@types/nodemailer": "^8.0.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.3"
   }

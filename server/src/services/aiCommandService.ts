@@ -15,6 +15,13 @@ import {
   normalizeLearnedCommandPhrase
 } from "./learnedCommandsService.js";
 import { personality } from "./personalityService.js";
+import {
+  buildObstacleCourseRoutine,
+  describeObstacleCourseActions,
+  findObstacleCourseRoutine,
+  parseObstacleCourseIntent,
+  parseObstacleCourseSteps
+} from "./obstacleCourseService.js";
 import { fetchWeatherSummary } from "./weatherService.js";
 import {
   matchVectorCommand,
@@ -197,8 +204,13 @@ const parseBuiltInSegment = (segment: string): ParsedAiAction | null => {
     return buildAction("status", "Check battery and robot status", {});
   }
 
-  if (/^(?:patrol|roam|explore)$/i.test(normalized)) {
-    return buildAction("roam", "Start patrol behavior", { animationId: "idle-scan" });
+  if (/^(?:patrol|roam|explore|go play|play by yourself|do your own thing)$/i.test(normalized)) {
+    return buildAction("assistant", "Start autonomous play", {
+      kind: "autonomous-play",
+      commandKey: "autonomous_play",
+      commandCategory: "custom",
+      behavior: normalized === "explore" || normalized.includes("play") ? "explore" : "patrol"
+    });
   }
 
   const animationMatch = normalized.match(/play\s+(.+?)\s+animation/i);
@@ -251,6 +263,8 @@ const buildLearnSuggestion = (prompt: string) => {
 
 const parseTeachCommand = (prompt: string) => {
   const patterns = [
+    /^(?:new\s+phrase|add\s+(?:a\s+)?phrase|create\s+(?:a\s+)?phrase)\s+(.+?)\s+(?:means?|should mean|as|to|runs?|does)\s+(.+)$/i,
+    /^(?:map|remap|edit\s+mapping|update\s+mapping|change\s+mapping)\s+(.+?)\s+(?:to|as|means?|should mean|runs?|does)\s+(.+)$/i,
     /^(?:learn|remember|teach(?:\s+vector)?)\s+(?:that\s+)?(.+?)\s+(?:means?|should mean|as)\s+(.+)$/i,
     /^when\s+i\s+say\s+(.+?)\s+(?:means?|do|run|treat it as)\s+(.+)$/i
   ];
@@ -303,6 +317,57 @@ const previewAiCommandInternal = async (
   const trimmedPrompt = prompt.trim();
   const controller = options.controller;
   const visitedPrompts = options.visitedPrompts ?? new Set<string>();
+
+  const obstacleCourseIntent = parseObstacleCourseIntent(trimmedPrompt);
+  if (obstacleCourseIntent) {
+    if (obstacleCourseIntent.type === "list") {
+      return buildParsedCommand(trimmedPrompt, [
+        buildAction("assistant", "List obstacle courses", {
+          kind: "list-obstacle-courses"
+        })
+      ]);
+    }
+
+    if (obstacleCourseIntent.type === "run") {
+      return buildParsedCommand(trimmedPrompt, [
+        buildAction(
+          "assistant",
+          `Run obstacle course ${obstacleCourseIntent.name || ""}`.trim(),
+          {
+            kind: "run-obstacle-course",
+            name: obstacleCourseIntent.name
+          }
+        )
+      ]);
+    }
+
+    const parsedCourse = parseObstacleCourseSteps(
+      obstacleCourseIntent.name || "My obstacle course",
+      obstacleCourseIntent.courseText || ""
+    );
+
+    if (!parsedCourse.actions.length) {
+      return buildUnsupportedCommand(trimmedPrompt, [
+        "I found the course name, but I need at least one safe step like forward 2 seconds, turn left, wait 1 second, say done, or dock."
+      ]);
+    }
+
+    return buildParsedCommand(
+      trimmedPrompt,
+      [
+        buildAction("assistant", `Save obstacle course ${parsedCourse.name}`, {
+          kind: "save-obstacle-course",
+          name: parsedCourse.name,
+          actions: parsedCourse.actions,
+          skippedSteps: parsedCourse.skippedSteps,
+          summary: describeObstacleCourseActions(parsedCourse.actions)
+        })
+      ],
+      parsedCourse.skippedSteps.length
+        ? [`Skipped unknown course step${parsedCourse.skippedSteps.length === 1 ? "" : "s"}: ${parsedCourse.skippedSteps.join(", ")}`]
+        : []
+    );
+  }
 
   if (!options.skipTeachParsing) {
     const teachCommand = parseTeachCommand(trimmedPrompt);
@@ -370,6 +435,13 @@ const previewAiCommandInternal = async (
     }
   }
 
+  const segments = splitPrompt(trimmedPrompt);
+  const actions = segments.map(parseSegment).filter(Boolean) as ParsedAiAction[];
+
+  if (actions.length) {
+    return buildParsedCommand(trimmedPrompt, actions);
+  }
+
   if (controller && !options.skipLearnedLookup) {
     const normalizedPrompt = normalizeLearnedCommandPhrase(trimmedPrompt);
     if (normalizedPrompt) {
@@ -400,16 +472,9 @@ const previewAiCommandInternal = async (
     }
   }
 
-  const segments = splitPrompt(trimmedPrompt);
-  const actions = segments.map(parseSegment).filter(Boolean) as ParsedAiAction[];
-
-  if (!actions.length) {
-    return buildUnsupportedCommand(trimmedPrompt, [
-      `I could not map that request to a supported Vector action yet. ${buildLearnSuggestion(trimmedPrompt)}`
-    ]);
-  }
-
-  return buildParsedCommand(trimmedPrompt, actions);
+  return buildUnsupportedCommand(trimmedPrompt, [
+    `I could not map that request to a supported Vector action yet. ${buildLearnSuggestion(trimmedPrompt)}`
+  ]);
 };
 
 const speakOnly = async (controller: RobotController, text: string) => {
@@ -503,12 +568,22 @@ const runAssistantAction = async (
         return "I still need the name to save.";
       }
       await controller.updateSettings({ userName: name });
+      await controller.learnPersonProfile({
+        name,
+        source: "voice",
+        notes: "Learned from a voice command."
+      });
       return speakOnly(controller, personality.saveUserName(name));
     }
 
     case "get-user-name": {
       const settings = await controller.getSettings();
       return speakOnly(controller, personality.recallUserName(settings.userName));
+    }
+
+    case "reset-person-memory": {
+      const result = await controller.clearPersonProfiles();
+      return speakOnly(controller, result.message);
     }
 
     case "teach-command": {
@@ -543,6 +618,214 @@ const runAssistantAction = async (
     case "list-learned-commands": {
       const learnedCommands = await controller.getLearnedCommands();
       return speakOnly(controller, personality.learnedCommandsList(learnedCommands));
+    }
+
+    case "save-conversation-memory": {
+      const key = readOptionalStringParam(action, "key") || "conversation.note";
+      const value = readStringParam(action, "value");
+      if (!value) {
+        return speakOnly(controller, "Tell me what to remember first.");
+      }
+
+      await controller.saveAiMemory({ key, value });
+      return speakOnly(controller, `I saved that locally: ${value}.`);
+    }
+
+    case "list-conversation-memory": {
+      const memories = await controller.getAiMemory();
+      if (!memories.length) {
+        return speakOnly(controller, "I do not have conversation memories saved yet.");
+      }
+
+      const preview = memories
+        .slice(0, 4)
+        .map((item) => item.value)
+        .join(". ");
+      const extra = memories.length > 4 ? ` I remember ${memories.length - 4} more things too.` : "";
+      return speakOnly(controller, `Here is what I remember locally. ${preview}.${extra}`);
+    }
+
+    case "save-obstacle-course": {
+      const name = readStringParam(action, "name") || "My obstacle course";
+      const actionsParam = action.params.actions;
+      const courseActions = Array.isArray(actionsParam)
+        ? actionsParam.flatMap((item) => {
+            if (
+              item &&
+              typeof item === "object" &&
+              "type" in item &&
+              "value" in item &&
+              typeof item.type === "string" &&
+              typeof item.value === "string"
+            ) {
+              return [{ type: item.type, value: item.value }];
+            }
+
+            return [];
+          })
+        : [];
+
+      if (!courseActions.length) {
+        return speakOnly(
+          controller,
+          "I need at least one safe course step before I can save that obstacle course."
+        );
+      }
+
+      const routine = buildObstacleCourseRoutine({
+        name,
+        actions: courseActions,
+        skippedSteps: []
+      });
+      await controller.saveRoutine(routine);
+      const summary = readOptionalStringParam(action, "summary") || describeObstacleCourseActions(courseActions);
+      return speakOnly(
+        controller,
+        `Saved obstacle course ${routine.name} inside this app only. It has ${courseActions.length} step${courseActions.length === 1 ? "" : "s"}: ${summary}.`
+      );
+    }
+
+    case "list-obstacle-courses": {
+      const courses = (await controller.getRoutines()).filter((routine) =>
+        routine.conditions.includes("obstacle-course-local-only")
+      );
+
+      if (!courses.length) {
+        return speakOnly(
+          controller,
+          "No obstacle courses are saved yet. Try: learn obstacle course desk: forward 2 seconds, turn left, say done."
+        );
+      }
+
+      const names = courses.slice(0, 5).map((routine) => routine.name).join(", ");
+      const extra = courses.length > 5 ? `, plus ${courses.length - 5} more` : "";
+      return speakOnly(controller, `Saved obstacle courses: ${names}${extra}.`);
+    }
+
+    case "run-obstacle-course": {
+      const name = readOptionalStringParam(action, "name");
+      const routine = findObstacleCourseRoutine(await controller.getRoutines(), name);
+
+      if (!routine) {
+        return speakOnly(
+          controller,
+          "I do not have an obstacle course saved yet. Teach one with: learn obstacle course desk: forward 2 seconds, turn left, say done."
+        );
+      }
+
+      const settings = await controller.getSettings();
+      let status = await Promise.resolve(controller.getStatus()).catch(() => null);
+      if (status && isChargingProtectionActive(settings, status)) {
+        return speakOnly(controller, buildChargingProtectionMessage("Obstacle courses"));
+      }
+
+      if (status?.isDocked || status?.mood === "sleepy" || status?.connectionState !== "connected") {
+        await Promise.resolve(controller.wake()).catch(() => undefined);
+        await sleep(1200);
+        status = await Promise.resolve(controller.getStatus()).catch(() => status);
+      }
+
+      const results: string[] = [];
+      for (const courseAction of routine.actions.slice(0, 12)) {
+        if (courseAction.type === "wait") {
+          const waitMs = Math.min(5000, Math.max(250, Number(courseAction.value) || 1000));
+          await sleep(waitMs);
+          results.push(`wait ${Math.round(waitMs / 1000)}s`);
+          continue;
+        }
+
+        if (courseAction.type === "drive") {
+          const [direction = "forward", rawSpeed = "55", rawDuration = "1200"] = courseAction.value.split(":");
+          const log = await controller.drive({
+            direction,
+            speed: Math.min(55, Math.max(20, Number(rawSpeed) || 55)),
+            durationMs: Math.min(4000, Math.max(250, Number(rawDuration) || 1200))
+          });
+          results.push(log.resultMessage);
+          continue;
+        }
+
+        if (courseAction.type === "speak") {
+          const log = await controller.speak({ text: courseAction.value });
+          results.push(log.resultMessage);
+          continue;
+        }
+
+        if (courseAction.type === "dock") {
+          const log = await controller.dock();
+          results.push(log.resultMessage);
+          continue;
+        }
+
+        if (courseAction.type === "stop") {
+          const log = await controller.drive({ direction: "stop", speed: 0 });
+          results.push(log.resultMessage);
+        }
+      }
+
+      await controller.updateRoutine(routine.id, { lastRunAt: new Date().toISOString() });
+      return speakOnly(
+        controller,
+        `Finished obstacle course ${routine.name}. ${results.length} step${results.length === 1 ? "" : "s"} ran through this app.`
+      );
+    }
+
+    case "learning-inbox": {
+      const gaps = await controller.getCommandGaps();
+      if (!gaps.length) {
+        return speakOnly(
+          controller,
+          "No missed phrases are waiting. If I do not understand something, it will show up here so you can teach it."
+        );
+      }
+
+      const preview = gaps
+        .slice(0, 3)
+        .map((gap) => gap.prompt)
+        .join(", ");
+      const extra = gaps.length > 3 ? `, plus ${gaps.length - 3} more` : "";
+      return speakOnly(
+        controller,
+        `I have ${gaps.length} phrase${gaps.length === 1 ? "" : "s"} to learn from: ${preview}${extra}. Open Ask to teach them safely.`
+      );
+    }
+
+    case "self-talk": {
+      const status = await Promise.resolve(controller.getStatus()).catch(() => null);
+      const lines = [
+        "Tiny robot thought of the day: staying curious is a valid operating mode.",
+        "I am running a quick vibe check. Result: very small, very determined.",
+        "Note to self: wheels are feet if you believe hard enough.",
+        "I am practicing being helpful without bumping into furniture."
+      ];
+      const line = lines[Math.floor(Math.random() * lines.length)] ?? lines[0];
+      return playCueAndSpeakFromRegistry(controller, "silly", line, status);
+    }
+
+    case "autonomous-play": {
+      let status = await Promise.resolve(controller.getStatus()).catch(() => null);
+      if (status && isChargingProtectionActive(await controller.getSettings(), status)) {
+        return speakOnly(controller, buildChargingProtectionMessage("Autonomous play"));
+      }
+
+      if (status?.isDocked || status?.mood === "sleepy" || status?.connectionState !== "connected") {
+        await Promise.resolve(controller.wake()).catch(() => undefined);
+        await sleep(1200);
+        status = await Promise.resolve(controller.getStatus()).catch(() => status);
+      }
+
+      const automation = await controller.getAutomationControl();
+      const requestedBehavior = readOptionalStringParam(action, "behavior");
+      const behavior: RoamBehavior =
+        requestedBehavior === "quiet" || requestedBehavior === "patrol" ? requestedBehavior : "explore";
+      const session = await controller.startRoam({
+        ...automation,
+        behavior,
+        targetArea: automation.targetArea || "nearby area",
+        safeReturnEnabled: true,
+        dataCollectionEnabled: true
+      });
+      return speakOnly(controller, `Autonomous play started. ${session.summary}`);
     }
 
     case "weather":

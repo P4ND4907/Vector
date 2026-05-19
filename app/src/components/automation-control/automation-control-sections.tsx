@@ -132,13 +132,21 @@ export function AutomationOverviewCard({
           </Button>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Badge>{automationControl.behavior}</Badge>
-          <p className="text-sm text-muted-foreground">
-            {controlMessage ??
-              automationState.message ??
-              "Autonomous roams keep their event log, distance, snapshots, and telemetry in local storage."}
-          </p>
+        <div className="grid gap-3">
+          <div className="flex items-center gap-2">
+            <Badge>{automationControl.behavior}</Badge>
+            <p className="text-sm text-muted-foreground">
+              {controlMessage ??
+                automationState.message ??
+                "Autonomous roams keep their event log, distance, snapshots, and telemetry in local storage."}
+            </p>
+          </div>
+
+          <div className="rounded-3xl border border-primary/15 bg-primary/8 p-4 text-sm text-muted-foreground">
+            Try saying <span className="text-foreground">go play</span>,{" "}
+            <span className="text-foreground">start auto mode</span>, or{" "}
+            <span className="text-foreground">talk to yourself</span>. If Vector misses a phrase, it appears in Ask so you can teach it safely.
+          </div>
         </div>
       </CardContent>
     </Card>

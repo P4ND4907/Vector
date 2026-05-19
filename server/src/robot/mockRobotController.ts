@@ -11,6 +11,7 @@ import type {
   DiagnosticReportRecord,
   DiscoveredRobot,
   LearnedCommandRecord,
+  PersonProfileRecord,
   RepairResultRecord,
   RobotController,
   RobotIntegrationInfo,
@@ -63,10 +64,11 @@ const buildMockSnapshot = (remoteId: string, label: string, accent: string): Cam
 const buildSettings = (): RuntimeSettings => ({
   theme: "dark",
   colorTheme: "vector",
-  autoDetectWirePod: true,
-  customWirePodEndpoint: "",
-  savedWirePodEndpoint: "",
-  mockMode: true,
+    autoDetectWirePod: true,
+    customWirePodEndpoint: "",
+    savedWirePodEndpoint: "",
+    bridgeProviderPreference: "auto",
+    mockMode: true,
   reconnectOnStartup: true,
   protectChargingUntilFull: true,
   pollingIntervalMs: 6000,
@@ -229,6 +231,7 @@ export const createMockRobotController = (): RobotController => {
   let roamSessions: RoamSessionRecord[] = [];
   let supportReports: SupportReportRecord[] = [];
   let aiMemory: AiMemoryRecord[] = [];
+  let personProfiles: PersonProfileRecord[] = [];
   let learnedCommands: LearnedCommandRecord[] = [];
   let commandGaps: CommandGapRecord[] = [];
   const discoveredRobots: DiscoveredRobot[] = [
@@ -769,6 +772,49 @@ export const createMockRobotController = (): RobotController => {
       }
 
       return aiMemory;
+    },
+    getPersonProfiles: () => personProfiles,
+    learnPersonProfile: ({ name, source = "voice", notes }) => {
+      const cleanName = name.trim().replace(/\s+/g, " ");
+      const normalizedName = cleanName.toLowerCase();
+      const now = new Date().toISOString();
+      const existing = personProfiles.find((profile) => profile.normalizedName === normalizedName);
+      const nextProfile: PersonProfileRecord = existing
+        ? {
+            ...existing,
+            name: cleanName,
+            source,
+            lastSeenAt: now,
+            notes: notes ?? existing.notes
+          }
+        : {
+            id: makeId(),
+            name: cleanName,
+            normalizedName,
+            source,
+            faceSamples: 0,
+            firstSeenAt: now,
+            lastSeenAt: now,
+            notes
+          };
+
+      personProfiles = [
+        nextProfile,
+        ...personProfiles.filter((profile) => profile.id !== nextProfile.id)
+      ].slice(0, 20);
+      return nextProfile;
+    },
+    clearPersonProfiles: () => {
+      const cleared = personProfiles.length;
+      personProfiles = [];
+      settings = {
+        ...settings,
+        userName: undefined
+      };
+      return {
+        cleared,
+        message: "Saved people were cleared. Vector is ready to learn the next person."
+      };
     },
     getLearnedCommands: () => learnedCommands,
     saveLearnedCommand: ({ phrase, targetPrompt }) => {

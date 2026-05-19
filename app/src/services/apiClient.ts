@@ -85,7 +85,7 @@ const getRequestUrl = (path: string, fallbackMessage?: string) => {
   throw new ApiClientError(
     fallbackMessage ??
       (isMobileShellLikeRuntime()
-        ? "Save the desktop backend URL in Settings first."
+        ? "The local engine is not ready yet. Open Connect and run recovery, then try again."
         : "Request failed."),
     "network"
   );

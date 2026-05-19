@@ -128,6 +128,17 @@ const buildPhoto = (
 const exactAlias = (normalized: string, aliases: string[]) =>
   aliases.some((alias) => normalized === normalize(alias));
 
+const readableCommandSegment = (value: string) =>
+  stripCommandPreamble(value)
+    .trim()
+    .replace(/\s+/g, " ");
+
+const cleanPersonName = (value: string) =>
+  value
+    .trim()
+    .replace(/[.!?]+$/g, "")
+    .replace(/\s+/g, " ");
+
 const extractDurationMs = (value: string) => {
   const matches = Array.from(
     value.matchAll(
@@ -222,16 +233,54 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     );
   }
 
-  const setNameMatch = normalized.match(/^my name is\s+(.+)$/i);
+  const setNameMatch = readableCommandSegment(segment).match(
+    /^(?:my name is|remember my name is|please remember my name is|call me|you can call me|i am|i'm|im)\s+(.+)$/i
+  );
   if (setNameMatch) {
-    const name = setNameMatch[1].trim();
+    const name = cleanPersonName(setNameMatch[1]);
     return buildAssistant("set_name", "legacy", `Remember your name as ${name}`, "set-user-name", {
       name
     });
   }
 
-  if (exactAlias(normalized, ["whats my name", "what is my name", "who am i", "do you know my name"])) {
+  if (
+    exactAlias(normalized, [
+      "whats my name",
+      "what is my name",
+      "who am i",
+      "whoami",
+      "who am eye",
+      "do you know who i am",
+      "do you know my name",
+      "do you remember my name",
+      "tell me my name",
+      "what do you call me",
+      "who do you think i am"
+    ])
+  ) {
     return buildAssistant("whats_my_name", "legacy", "Recall your saved name", "get-user-name");
+  }
+
+  if (
+    exactAlias(normalized, [
+      "forget everyone",
+      "forget all people",
+      "clear saved people",
+      "clear saved faces",
+      "reset saved faces",
+      "reset face memory",
+      "reset person memory",
+      "start fresh for next person",
+      "start fresh with the next person",
+      "new person mode"
+    ])
+  ) {
+    return buildAssistant(
+      "reset_person_memory",
+      "legacy",
+      "Clear saved people and prepare to learn the next person",
+      "reset-person-memory"
+    );
   }
 
   const weatherTomorrowMatch = normalized.match(
@@ -413,8 +462,24 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     return buildAction("dock", "Return to the charger", withMeta("go_to_charger", "legacy", {}));
   }
 
-  if (exactAlias(normalized, ["start exploring", "explore", "start exploration"])) {
-    return buildAction("roam", "Start exploring", withMeta("start_exploring", "legacy", { animationId: "idle-scan" }));
+  if (
+    exactAlias(normalized, [
+      "start exploring",
+      "explore",
+      "start exploration",
+      "go explore",
+      "go play",
+      "play by yourself",
+      "do your own thing",
+      "entertain yourself",
+      "wander around",
+      "undock and explore",
+      "wake up and explore"
+    ])
+  ) {
+    return buildAssistant("autonomous_play", "custom", "Start autonomous play", "autonomous-play", {
+      behavior: "explore"
+    });
   }
 
   if (exactAlias(normalized, ["stop exploring", "stop exploration"])) {
@@ -573,6 +638,30 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     return buildAssistant("whats_your_name", "extended", "Check Vector's name", "get-robot-name");
   }
 
+  const rememberFactMatch = readableCommandSegment(segment).match(
+    /^(?:remember|remember that|please remember that)\s+(.+)$/i
+  );
+  if (rememberFactMatch) {
+    const value = rememberFactMatch[1].trim();
+    return buildAssistant("conversation_memory_save", "extended", "Remember a conversation note", "save-conversation-memory", {
+      key: "conversation.note",
+      value
+    });
+  }
+
+  if (
+    exactAlias(normalized, [
+      "what do you remember",
+      "what do you know about me",
+      "show memory",
+      "show memories",
+      "list memories",
+      "what have you remembered"
+    ])
+  ) {
+    return buildAssistant("conversation_memory_list", "extended", "Review saved conversation memory", "list-conversation-memory");
+  }
+
   const languageMatch = normalized.match(/^(?:lets talk|speak in|change language to)\s+(.+)$/i);
   if (languageMatch) {
     const language = languageMatch[1].trim();
@@ -721,12 +810,39 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
     return buildAssistant("discover_robots", "custom", "Discover local robots", "discover-robots");
   }
 
-  const startRoamMatch = normalized.match(/^(?:start|begin)\s+(?:(quiet|explore|patrol)\s+)?(?:patrol|roam|automation)(?:\s+(?:mode|run))?(?:\s+in\s+(.+))?$/i);
+  const startRoamMatch = normalized.match(/^(?:start|begin|run)\s+(?:(quiet|explore|patrol)\s+)?(?:patrol|roam|automation|autonomous\s+mode|auto\s+mode)(?:\s+(?:mode|run))?(?:\s+in\s+(.+))?$/i);
   if (startRoamMatch) {
     return buildAssistant("automation_start", "custom", "Start patrol automation", "start-roam", {
       behavior: startRoamMatch[1]?.trim().toLowerCase(),
       targetArea: startRoamMatch[2]?.trim()
     });
+  }
+
+  if (
+    exactAlias(normalized, [
+      "start autonomous mode",
+      "start auto mode",
+      "turn on autonomous mode",
+      "start self play",
+      "self play",
+      "go be autonomous"
+    ])
+  ) {
+    return buildAssistant("autonomous_play", "custom", "Start autonomous play", "autonomous-play", {
+      behavior: "explore"
+    });
+  }
+
+  if (
+    exactAlias(normalized, [
+      "talk to yourself",
+      "say something to yourself",
+      "think out loud",
+      "keep yourself company",
+      "say a robot thought"
+    ])
+  ) {
+    return buildAssistant("self_talk", "custom", "Say a small robot thought", "self-talk");
   }
 
   if (exactAlias(normalized, ["pause patrol", "pause roam", "pause automation", "hold patrol"])) {
@@ -743,6 +859,21 @@ export const matchVectorCommand = (segment: string): ParsedAiAction | null => {
 
   if (exactAlias(normalized, ["automation status", "patrol status", "roam status", "status of patrol"])) {
     return buildAssistant("automation_status", "custom", "Check patrol automation status", "automation-status");
+  }
+
+  if (
+    exactAlias(normalized, [
+      "learning inbox",
+      "show learning inbox",
+      "what did you miss",
+      "what phrases did you miss",
+      "what should i teach you",
+      "learn from mistakes",
+      "show missed phrases",
+      "review missed phrases"
+    ])
+  ) {
+    return buildAssistant("learning_inbox", "custom", "Review missed phrases", "learning-inbox");
   }
 
   if (exactAlias(normalized, ["dance", "do a dance", "show me a dance"])) {

@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import {
   buildAiBrainChat,
+  extractConversationMemories,
   getAiMemory
 } from "../services/aiBrainService.js";
 import { executeAiCommand, previewAiCommand } from "../services/aiCommandService.js";
@@ -257,7 +258,22 @@ export const createAiRouter = (controller: RobotController, rawEnv: unknown) => 
   router.post("/chat", async (request: Request, response: Response) => {
     try {
       const body = chatRequestSchema.parse(request.body ?? {});
-      const memory = await controller.getAiMemory();
+      let memory = await controller.getAiMemory();
+      const learnedMemories = extractConversationMemories(body.message);
+      for (const item of learnedMemories) {
+        memory = await controller.saveAiMemory(item);
+      }
+
+      const parsed = await previewAiCommand(body.message, controller);
+      if (!parsed.canExecute && /\b(vector|robot|drive|move|say|play|dock|photo|picture|weather|remember|learn|teach|patrol|roam|explore)\b/i.test(body.message)) {
+        await controller.recordCommandGap({
+          source: "ai",
+          prompt: body.message,
+          category: "unsupported",
+          note: "Conversation message looked command-like, but the command engine could not run it yet."
+        });
+      }
+
       const result = await buildAiBrainChat({
         controller,
         env,
@@ -268,6 +284,7 @@ export const createAiRouter = (controller: RobotController, rawEnv: unknown) => 
       response.json({
         reply: result.reply,
         mode: result.mode,
+        learned: learnedMemories,
         memoryCount: memory.length
       });
     } catch (error) {
@@ -309,6 +326,24 @@ export const createAiRouter = (controller: RobotController, rawEnv: unknown) => 
     try {
       const body = z.object({ key: z.string().min(1).max(80).optional() }).parse(request.body ?? {});
       await handleMemoryGet(body.key, response);
+    } catch (error) {
+      handleRouteError(error, response);
+    }
+  });
+
+  router.get("/people", async (_request: Request, response: Response) => {
+    try {
+      response.json({
+        items: await controller.getPersonProfiles()
+      });
+    } catch (error) {
+      handleRouteError(error, response);
+    }
+  });
+
+  router.post("/people/reset", async (_request: Request, response: Response) => {
+    try {
+      response.json(await controller.clearPersonProfiles());
     } catch (error) {
       handleRouteError(error, response);
     }

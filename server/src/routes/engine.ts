@@ -4,6 +4,7 @@ import { createBridgeProviderManager } from "../engine/bridgeProviderManager.js"
 import type { RobotController } from "../robot/types.js";
 import { createAiRouter } from "./ai.js";
 import { createAppRouter } from "./app.js";
+import { createBotLabRouter } from "./botlab.js";
 import { createDiagnosticsRouter } from "./diagnostics.js";
 import { createMonetizationRouter } from "./monetization.js";
 import { createRoutineRouter } from "./routines.js";
@@ -19,7 +20,7 @@ const asyncRoute =
   };
 
 const providerSchema = z.object({
-  provider: z.enum(["embedded", "wirepod", "mock"])
+  provider: z.enum(["embedded", "direct", "wirepod", "mock"])
 });
 
 const pairSchema = z.object({
@@ -206,6 +207,7 @@ export const createEngineRouter = (controller: RobotController, env: BuildEnvRes
       await controller.updateSettings({
         autoDetectWirePod: true,
         customWirePodEndpoint: "",
+        bridgeProviderPreference: "embedded",
         reconnectOnStartup: true
       });
       response.json({
@@ -217,6 +219,7 @@ export const createEngineRouter = (controller: RobotController, env: BuildEnvRes
   );
 
   router.use("/", createAppRouter(controller));
+  router.use("/botlab", createBotLabRouter(controller));
   router.use("/diagnostics", createDiagnosticsRouter(controller));
   router.use("/settings", createSettingsRouter(controller));
   router.use("/support", createSupportRouter(controller));

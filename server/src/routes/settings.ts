@@ -51,6 +51,7 @@ const settingsPatchSchema = z.object({
   colorTheme: z.enum(["vector", "midnight", "ice"]).optional(),
   autoDetectWirePod: z.boolean().optional(),
   customWirePodEndpoint: z.string().optional(),
+  bridgeProviderPreference: z.enum(["auto", "embedded", "wirepod", "direct"]).optional(),
   mockMode: z.boolean().optional(),
   reconnectOnStartup: z.boolean().optional(),
   protectChargingUntilFull: z.boolean().optional(),

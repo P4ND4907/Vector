@@ -7,6 +7,7 @@ import type {
   CommandGapRecord,
   CommandLogRecord,
   LearnedCommandRecord,
+  PersonProfileRecord,
   SupportReportRecord,
   RobotStatus,
   RoamSessionRecord,
@@ -28,6 +29,7 @@ export interface PersistedState {
   commandGaps: CommandGapRecord[];
   learnedCommands: LearnedCommandRecord[];
   logs: CommandLogRecord[];
+  personProfiles: PersonProfileRecord[];
   robotProfile: PersistedRobotProfile;
   roamSessions: RoamSessionRecord[];
   routines: RoutineRecord[];
@@ -42,6 +44,7 @@ const defaultSettings = (): RuntimeSettings => ({
   autoDetectWirePod: true,
   customWirePodEndpoint: "",
   savedWirePodEndpoint: "",
+  bridgeProviderPreference: "embedded",
   mockMode: false,
   reconnectOnStartup: true,
   protectChargingUntilFull: true,
@@ -64,6 +67,7 @@ const defaultState = (): PersistedState => ({
   },
   commandGaps: [],
   learnedCommands: [],
+  personProfiles: [],
   settings: defaultSettings(),
   routines: [],
   logs: [],
@@ -104,6 +108,7 @@ export const createLocalStore = (filePath: string) => {
         },
         commandGaps: Array.isArray(raw.commandGaps) ? raw.commandGaps.slice(0, 120) : [],
         learnedCommands: sanitizeLearnedCommands(raw.learnedCommands),
+        personProfiles: Array.isArray(raw.personProfiles) ? raw.personProfiles.slice(0, 20) : [],
         settings: {
           ...defaultSettings(),
           ...(raw.settings ?? {}),
@@ -204,6 +209,15 @@ export const createLocalStore = (filePath: string) => {
         const nextState = {
           ...state,
           learnedCommands: learnedCommands.slice(0, 120)
+        };
+        writeState(nextState);
+        return nextState;
+      })(),
+    savePersonProfiles: (personProfiles: PersonProfileRecord[]) =>
+      state = (() => {
+        const nextState = {
+          ...state,
+          personProfiles: personProfiles.slice(0, 20)
         };
         writeState(nextState);
         return nextState;

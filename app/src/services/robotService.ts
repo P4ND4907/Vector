@@ -135,6 +135,7 @@ interface CameraSyncApiResponse {
   latestSnapshot?: ServerCameraSnapshot;
   syncedCount: number;
   note?: string;
+  emailBatch?: CameraSyncResult["emailBatch"];
   streamUrl?: string;
 }
 
@@ -476,7 +477,7 @@ const buildLocalSettingsTransition = ({
       mockMode: false,
       wirePodReachable: needsBackendTarget ? false : currentIntegration.wirePodReachable,
       robotReachable: false,
-      note: needsBackendTarget ? "Save the desktop backend URL in Settings first." : "Local bridge offline",
+      note: needsBackendTarget ? "The local engine is not ready on this phone yet." : "Local bridge offline",
       lastCheckedAt: new Date().toISOString()
     },
     robot: currentRobot
@@ -496,9 +497,7 @@ const buildLocalSettingsTransition = ({
                 ? "charging"
                 : "docked"
               : "offline",
-          currentActivity: needsBackendTarget
-            ? "Waiting for the desktop backend URL."
-            : "Local bridge offline",
+          currentActivity: needsBackendTarget ? "Waiting for the local engine to start." : "Local bridge offline",
           lastSeen: currentRobot.lastSeen || new Date().toISOString()
         }
       : undefined
@@ -941,7 +940,8 @@ export const robotService = {
             snapshots: response.snapshots.map(mapCameraSnapshot),
             latestSnapshot: response.latestSnapshot ? mapCameraSnapshot(response.latestSnapshot) : undefined,
             syncedCount: response.syncedCount,
-            note: response.note
+            note: response.note,
+            emailBatch: response.emailBatch
           }
         };
       },
@@ -958,7 +958,8 @@ export const robotService = {
             snapshots: [result.data],
             latestSnapshot: result.data,
             syncedCount: 1,
-            note: result.message
+            note: result.message,
+            emailBatch: undefined
           }
         };
       }
@@ -981,7 +982,8 @@ export const robotService = {
             snapshots: response.snapshots.map(mapCameraSnapshot),
             latestSnapshot: response.latestSnapshot ? mapCameraSnapshot(response.latestSnapshot) : undefined,
             syncedCount: response.syncedCount,
-            note: response.note
+            note: response.note,
+            emailBatch: response.emailBatch
           }
         };
       },
@@ -998,7 +1000,8 @@ export const robotService = {
             snapshots: result.data.snapshots,
             latestSnapshot: result.data.latestSnapshot ?? result.data.snapshots[0],
             syncedCount: result.data.syncedCount,
-            note: result.data.note
+            note: result.data.note,
+            emailBatch: undefined
           }
         };
       }

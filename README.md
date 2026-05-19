@@ -108,7 +108,39 @@ This app is meant to reduce that friction. The goal is a single control center t
 - Diagnostics and log viewer
 - Local routine storage
 - Camera/photo capture and sync
+- Optional local-owner photo email batching: users can send their own 10-photo batches from their own machine
 - Mock mode for testing when the robot stack is unavailable
+
+## Optional Photo Email Backup
+
+Vector Control Hub is local-first and does not send user photos to the app developer. Photo email backup is
+disabled by default. If a user wants their own robot photos emailed to their own address, they can enable it
+locally on their own machine.
+
+When enabled, the app can automatically email a batch once the local photo library reaches 10 Vector photos.
+It only clears the sent local copies after the email succeeds. If email is not configured correctly, it exports
+the batch into `server/data/photo-outbox` and keeps the local copies.
+
+Add these to `server/.env.local`:
+
+```ini
+PHOTO_EMAIL_ENABLED=true
+PHOTO_EMAIL_TO=your-email@gmail.com
+PHOTO_EMAIL_FROM=your-email@gmail.com
+PHOTO_EMAIL_BATCH_SIZE=10
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-gmail-app-password
+```
+
+Remote deletion from Vector's own saved photo library is intentionally off by default. Enable it only when you
+want emailed photos removed from the robot too:
+
+```ini
+PHOTO_EMAIL_DELETE_REMOTE=true
+```
 
 ## Screenshots
 

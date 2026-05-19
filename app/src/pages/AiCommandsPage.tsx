@@ -308,6 +308,32 @@ const describeAction = (action: AiCommandAction) => {
           return "The app will flip a virtual coin, trigger a quick on-robot cue, and read heads or tails aloud.";
         case "rock-paper-scissors":
           return "The app will trigger a quick game cue and have Vector choose rock, paper, or scissors aloud.";
+        case "teach-command":
+          return "The app will save a custom phrase on this device after confirming the target command works.";
+        case "forget-command":
+          return "The app will remove that custom phrase from local memory.";
+        case "list-learned-commands":
+          return "The app will list the custom phrases saved on this device.";
+        case "learning-inbox":
+          return "The app will review recent missed phrases so you can teach safe shortcuts.";
+        case "save-conversation-memory":
+          return "The app will save this conversation note locally on this device.";
+        case "list-conversation-memory":
+          return "The app will read back locally saved conversation memory.";
+        case "save-obstacle-course":
+          return action.params.name
+            ? `The app will save ${String(action.params.name)} as a local obstacle course that only runs from this app.`
+            : "The app will save this as a local obstacle course that only runs from this app.";
+        case "run-obstacle-course":
+          return action.params.name
+            ? `Vector will run the saved obstacle course ${String(action.params.name)} with safe movement limits.`
+            : "Vector will run the most recent saved obstacle course with safe movement limits.";
+        case "list-obstacle-courses":
+          return "The app will list locally saved obstacle courses.";
+        case "self-talk":
+          return "Vector will say a small playful thought without starting wheel movement.";
+        case "autonomous-play":
+          return "Vector will start a safe explore roam using stored automation settings, local logs, and auto-dock rules.";
         case "chat-with-user":
           return action.params.target
             ? `The app will save ${String(action.params.target)} as the active chat target.`
@@ -865,6 +891,10 @@ export function AiCommandsPage() {
               </div>
               <p className="mt-2 text-sm text-muted-foreground">
                 Turn failed commands into reusable shortcuts. Save the phrase that missed, point it at a command that already works, and test it again right here.
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Conversation memory is local-first too. Try <span className="text-foreground">remember that I like chess</span> or{" "}
+                <span className="text-foreground">what do you remember</span>. The app keeps those notes on this device instead of training a shared model.
               </p>
               <p className="mt-2 text-xs text-muted-foreground">{learningNote}</p>
 

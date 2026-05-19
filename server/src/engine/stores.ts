@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-export type BridgeProviderName = "embedded" | "wirepod" | "mock";
+export type BridgeProviderName = "embedded" | "direct" | "wirepod" | "mock";
 
 export interface EngineSettingsRecord {
   provider: BridgeProviderName;
@@ -46,7 +46,7 @@ export const createEngineSettingsStore = (filePath: string) => {
   };
   const resolvedPath = ensureJsonFile(filePath, defaults);
   let current = readJsonSafe(resolvedPath, defaults);
-  if (!["embedded", "wirepod", "mock"].includes(current.provider)) {
+  if (!["embedded", "direct", "wirepod", "mock"].includes(current.provider)) {
     current.provider = "embedded";
   }
 

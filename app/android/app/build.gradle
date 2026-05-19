@@ -16,8 +16,8 @@ android {
         applicationId "com.vectorcontrolhub.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 260971915
-        versionName "0.1.39"
+        versionCode 261381530
+        versionName "0.1.67"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

@@ -37,6 +37,67 @@ const buildMemoryContext = (memory: AiMemoryRecord[]) =>
     ? memory.map((item) => `${item.key}: ${item.value}`).join("\n")
     : "No saved memory yet.";
 
+const cleanMemoryValue = (value: string) =>
+  value
+    .trim()
+    .replace(/[.!?]+$/g, "")
+    .replace(/\s+/g, " ")
+    .slice(0, 180);
+
+export const extractConversationMemories = (message: string) => {
+  const trimmed = message.trim();
+  const memories: Array<{ key: string; value: string }> = [];
+
+  const rememberMatch = trimmed.match(/^(?:remember|remember that|please remember that)\s+(.+)$/i);
+  if (rememberMatch?.[1]) {
+    const value = cleanMemoryValue(rememberMatch[1]);
+    if (value) {
+      memories.push({ key: "conversation.note", value });
+    }
+  }
+
+  const favoriteMatch = trimmed.match(/^(?:my favorite|i like|i love)\s+(.+?)\s+(?:is|are)\s+(.+)$/i);
+  if (favoriteMatch?.[1] && favoriteMatch[2]) {
+    memories.push({
+      key: `favorite.${cleanMemoryValue(favoriteMatch[1]).toLowerCase().replace(/[^\w]+/g, "_")}`,
+      value: cleanMemoryValue(favoriteMatch[2])
+    });
+  }
+
+  const preferenceMatch = trimmed.match(/^i\s+(?:like|love|prefer|enjoy)\s+(.+)$/i);
+  if (preferenceMatch?.[1]) {
+    memories.push({
+      key: "preference.like",
+      value: cleanMemoryValue(preferenceMatch[1])
+    });
+  }
+
+  const dislikeMatch = trimmed.match(/^i\s+(?:do not like|dont like|don't like|hate|dislike)\s+(.+)$/i);
+  if (dislikeMatch?.[1]) {
+    memories.push({
+      key: "preference.dislike",
+      value: cleanMemoryValue(dislikeMatch[1])
+    });
+  }
+
+  const callMeMatch = trimmed.match(/^(?:call me|my name is|i am|i'm|im)\s+(.+)$/i);
+  if (callMeMatch?.[1]) {
+    memories.push({
+      key: "user.name",
+      value: cleanMemoryValue(callMeMatch[1])
+    });
+  }
+
+  const seen = new Set<string>();
+  return memories.filter((memory) => {
+    if (!memory.key || !memory.value || seen.has(memory.key)) {
+      return false;
+    }
+    seen.add(memory.key);
+    return true;
+  });
+};
+
 const buildFallbackReply = async (
   controller: RobotController,
   message: string,

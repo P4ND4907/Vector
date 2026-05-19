@@ -1,5 +1,6 @@
-export type RobotConnectionSource = "mock" | "wirepod";
-export type LocalBridgeProvider = "embedded" | "wirepod" | "mock";
+export type RobotConnectionSource = "mock" | "wirepod" | "direct";
+export type LocalBridgeProvider = "embedded" | "direct" | "wirepod" | "mock";
+export type BridgeProviderPreference = "auto" | "embedded" | "wirepod" | "direct";
 export type MaybePromise<T> = T | Promise<T>;
 export type SystemStatus = "ready" | "charging" | "docked" | "busy" | "offline" | "error";
 export type LiveUpdateMode = "polling";
@@ -53,6 +54,17 @@ export interface LearnedCommandRecord {
   normalizedTargetPrompt: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PersonProfileRecord {
+  id: string;
+  name: string;
+  normalizedName: string;
+  source: "voice" | "app" | "camera";
+  faceSamples: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  notes?: string;
 }
 
 export interface RobotStatus {
@@ -143,6 +155,7 @@ export interface RuntimeSettings {
   autoDetectWirePod: boolean;
   customWirePodEndpoint: string;
   savedWirePodEndpoint: string;
+  bridgeProviderPreference: BridgeProviderPreference;
   mockMode: boolean;
   reconnectOnStartup: boolean;
   protectChargingUntilFull: boolean;
@@ -185,11 +198,24 @@ export interface CameraSnapshotRecord {
   source: RobotConnectionSource;
 }
 
+export interface CameraEmailBatchResult {
+  attempted: boolean;
+  configured: boolean;
+  sent: boolean;
+  exported: boolean;
+  deletedLocal: boolean;
+  deletedRemote: boolean;
+  count: number;
+  exportPath?: string;
+  message: string;
+}
+
 export interface CameraSyncResult {
   snapshots: CameraSnapshotRecord[];
   latestSnapshot?: CameraSnapshotRecord;
   syncedCount: number;
   note: string;
+  emailBatch?: CameraEmailBatchResult;
 }
 
 export interface CameraImageAsset {
@@ -449,6 +475,13 @@ export interface RobotController {
   getSupportReports: () => MaybePromise<SupportReportRecord[]>;
   getAiMemory: () => MaybePromise<AiMemoryRecord[]>;
   saveAiMemory: (payload: { key: string; value: string }) => MaybePromise<AiMemoryRecord[]>;
+  getPersonProfiles: () => MaybePromise<PersonProfileRecord[]>;
+  learnPersonProfile: (payload: {
+    name: string;
+    source?: PersonProfileRecord["source"];
+    notes?: string;
+  }) => MaybePromise<PersonProfileRecord>;
+  clearPersonProfiles: () => MaybePromise<{ cleared: number; message: string }>;
   getLearnedCommands: () => MaybePromise<LearnedCommandRecord[]>;
   saveLearnedCommand: (payload: {
     phrase: string;

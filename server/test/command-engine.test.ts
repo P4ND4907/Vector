@@ -68,6 +68,19 @@ test("notable legacy, community, and automation command variations resolve to th
   const sing = await getFirstAction("sing for me");
   assert.equal(sing.type, "assistant");
   assert.equal(sing.params.kind, "fun-sing");
+
+  const autonomousPlay = await getFirstAction("go play");
+  assert.equal(autonomousPlay.type, "assistant");
+  assert.equal(autonomousPlay.params.kind, "autonomous-play");
+  assert.equal(autonomousPlay.params.behavior, "explore");
+
+  const selfTalk = await getFirstAction("talk to yourself");
+  assert.equal(selfTalk.type, "assistant");
+  assert.equal(selfTalk.params.kind, "self-talk");
+
+  const learningInbox = await getFirstAction("show missed phrases");
+  assert.equal(learningInbox.type, "assistant");
+  assert.equal(learningInbox.params.kind, "learning-inbox");
 });
 
 test("learned phrases can be taught, listed, used, and forgotten", async () => {
@@ -78,6 +91,21 @@ test("learned phrases can be taught, listed, used, and forgotten", async () => {
   assert.equal(teachPreview.actions[0]?.type, "assistant");
   assert.equal(teachPreview.actions[0]?.params.kind, "teach-command");
   await executeAiCommand(controller, teachPreview);
+
+  const naturalTeachPreview = await previewAiCommand("new phrase sky check means what is the weather", controller);
+  assert.equal(naturalTeachPreview.canExecute, true);
+  assert.equal(naturalTeachPreview.actions[0]?.params.kind, "teach-command");
+  assert.equal(naturalTeachPreview.actions[0]?.params.phrase, "sky check");
+  await executeAiCommand(controller, naturalTeachPreview);
+
+  const naturalLearnedPreview = await previewAiCommand("sky check", controller);
+  assert.equal(naturalLearnedPreview.canExecute, true);
+  assert.equal(naturalLearnedPreview.actions[0]?.params.kind, "weather");
+
+  const remapPreview = await previewAiCommand("edit mapping sky check to check battery", controller);
+  assert.equal(remapPreview.canExecute, true);
+  assert.equal(remapPreview.actions[0]?.params.kind, "teach-command");
+  assert.equal(remapPreview.actions[0]?.params.targetPrompt, "check battery");
 
   const listPreview = await previewAiCommand("list learned commands", controller);
   assert.equal(listPreview.actions[0]?.params.kind, "list-learned-commands");
@@ -90,12 +118,133 @@ test("learned phrases can be taught, listed, used, and forgotten", async () => {
     )
   );
 
+  await controller.saveLearnedCommand({ phrase: "call me Greyson", targetPrompt: "go dock" });
+  const protectedBuiltInPreview = await previewAiCommand("call me Greyson", controller);
+  assert.equal(protectedBuiltInPreview.actions[0]?.type, "assistant");
+  assert.equal(protectedBuiltInPreview.actions[0]?.params.kind, "set-user-name");
+  assert.equal(protectedBuiltInPreview.actions[0]?.params.name, "Greyson");
+
   const forgetPreview = await previewAiCommand("forget lucky toss", controller);
   assert.equal(forgetPreview.actions[0]?.params.kind, "forget-command");
   await executeAiCommand(controller, forgetPreview);
 
   const afterForget = await previewAiCommand("lucky toss", controller);
   assert.equal(afterForget.canExecute, false);
+});
+
+test("conversation memory can be saved and recalled locally", async () => {
+  const controller = createMockRobotController();
+
+  const savePreview = await previewAiCommand("remember that I like chess", controller);
+  assert.equal(savePreview.canExecute, true);
+  assert.equal(savePreview.actions[0]?.type, "assistant");
+  assert.equal(savePreview.actions[0]?.params.kind, "save-conversation-memory");
+
+  const saveResult = await executeAiCommand(controller, savePreview);
+  assert.match(saveResult.resultMessage, /chess/i);
+
+  const memory = await controller.getAiMemory();
+  assert.equal(memory.length, 1);
+  assert.equal(memory[0]?.key, "conversation.note");
+  assert.match(memory[0]?.value ?? "", /chess/i);
+
+  const listPreview = await previewAiCommand("what do you remember", controller);
+  assert.equal(listPreview.canExecute, true);
+  assert.equal(listPreview.actions[0]?.params.kind, "list-conversation-memory");
+
+  const listResult = await executeAiCommand(controller, listPreview);
+  assert.match(listResult.resultMessage, /chess/i);
+});
+
+test("name memory registers the person and recalls their name naturally", async () => {
+  const controller = createMockRobotController();
+
+  const setNamePreview = await previewAiCommand("call me Greyson", controller);
+  assert.equal(setNamePreview.canExecute, true);
+  assert.equal(setNamePreview.actions[0]?.type, "assistant");
+  assert.equal(setNamePreview.actions[0]?.params.kind, "set-user-name");
+  assert.equal(setNamePreview.actions[0]?.params.name, "Greyson");
+
+  const setNameResult = await executeAiCommand(controller, setNamePreview);
+  assert.match(setNameResult.resultMessage, /Greyson/);
+  const people = await controller.getPersonProfiles();
+  assert.equal(people.length, 1);
+  assert.equal(people[0]?.name, "Greyson");
+  assert.equal(people[0]?.faceSamples, 0);
+
+  const recallPreview = await previewAiCommand("what's my name", controller);
+  assert.equal(recallPreview.canExecute, true);
+  assert.equal(recallPreview.actions[0]?.type, "assistant");
+  assert.equal(recallPreview.actions[0]?.params.kind, "get-user-name");
+
+  const recallResult = await executeAiCommand(controller, recallPreview);
+  assert.match(recallResult.resultMessage, /Greyson/);
+
+  const heardLikeEye = await previewAiCommand("who am eye", controller);
+  assert.equal(heardLikeEye.canExecute, true);
+  assert.equal(heardLikeEye.actions[0]?.params.kind, "get-user-name");
+
+  const noSpace = await previewAiCommand("whoami", controller);
+  assert.equal(noSpace.canExecute, true);
+  assert.equal(noSpace.actions[0]?.params.kind, "get-user-name");
+
+  const rememberPreview = await previewAiCommand("remember my name is Joseph", controller);
+  assert.equal(rememberPreview.actions[0]?.params.kind, "set-user-name");
+  assert.equal(rememberPreview.actions[0]?.params.name, "Joseph");
+});
+
+test("person memory can be cleared for a fresh next person", async () => {
+  const controller = createMockRobotController();
+
+  await executeAiCommand(controller, await previewAiCommand("my name is Greyson", controller));
+  assert.equal((await controller.getPersonProfiles()).length, 1);
+
+  const resetPreview = await previewAiCommand("start fresh for next person", controller);
+  assert.equal(resetPreview.canExecute, true);
+  assert.equal(resetPreview.actions[0]?.params.kind, "reset-person-memory");
+
+  const resetResult = await executeAiCommand(controller, resetPreview);
+  assert.match(resetResult.resultMessage, /ready to learn the next person/i);
+  assert.equal((await controller.getPersonProfiles()).length, 0);
+
+  const recallResult = await executeAiCommand(controller, await previewAiCommand("what's my name", controller));
+  assert.match(recallResult.resultMessage, /do not know your name yet/i);
+});
+
+test("obstacle courses can be learned locally, listed, and replayed through the app", async () => {
+  const controller = createMockRobotController();
+
+  const savePreview = await previewAiCommand(
+    "learn obstacle course desk: forward 2 seconds, turn left, say done",
+    controller
+  );
+  assert.equal(savePreview.canExecute, true);
+  assert.equal(savePreview.actions[0]?.type, "assistant");
+  assert.equal(savePreview.actions[0]?.params.kind, "save-obstacle-course");
+  assert.equal(savePreview.actions[0]?.params.name, "desk");
+
+  const saveResult = await executeAiCommand(controller, savePreview);
+  assert.match(saveResult.resultMessage, /Saved obstacle course desk/i);
+
+  const routines = await controller.getRoutines();
+  const course = routines.find((routine) => routine.name === "desk");
+  assert.ok(course);
+  assert.ok(course.conditions.includes("obstacle-course-local-only"));
+  assert.equal(course.actions.length, 3);
+
+  const listPreview = await previewAiCommand("list obstacle courses", controller);
+  assert.equal(listPreview.actions[0]?.params.kind, "list-obstacle-courses");
+  const listResult = await executeAiCommand(controller, listPreview);
+  assert.match(listResult.resultMessage, /desk/i);
+
+  const runPreview = await previewAiCommand("run obstacle course desk", controller);
+  assert.equal(runPreview.actions[0]?.params.kind, "run-obstacle-course");
+  const runResult = await executeAiCommand(controller, runPreview);
+  assert.match(runResult.resultMessage, /Finished obstacle course desk/i);
+
+  const logs = await controller.getLogs();
+  assert.ok(logs.some((log) => log.type === "drive" && log.resultMessage.includes("forward")));
+  assert.ok(logs.some((log) => log.type === "speak" && log.resultMessage.includes("done")));
 });
 
 test("mock execution works for new fun commands and returns a usable response", async () => {

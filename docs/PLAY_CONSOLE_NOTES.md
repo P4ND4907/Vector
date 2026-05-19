@@ -11,9 +11,9 @@ Use the public GitHub URL for:
 ## App Access
 
 - No special login, account, or access code is required.
-- Core functionality depends on the user's own local backend, WirePod setup, and Vector robot.
+- Core functionality depends on the user's own local engine/backend setup and Vector robot.
 - Reviewer note:
-  - "This app does not use an app-specific login. It connects to the user's own local Vector / WirePod setup on their device or local network."
+  - "This app does not use an app-specific login. It connects to the user's own local Vector engine/backend on their device or local network."
 
 ## Ads
 
@@ -75,29 +75,29 @@ You will still need:
 ## Current Android release values (for this repo)
 
 - Package name: `com.vectorcontrolhub.app`
-- current `versionCode`: `260971915`
-- current `versionName`: `0.1.39`
+- current `versionCode`: `261381530`
+- current `versionName`: `0.1.67`
 
-## Suggested Release Notes For 0.1.39
+## Suggested Release Notes For 0.1.64
 
 Use this for the Play release notes field:
 
-- improved health-state messaging so the app now separates bridge down, sdk flapping, robot asleep, and ready states more clearly
-- made bridge recovery smarter with watchdog-aware repair steps and clearer auto-recover guidance
-- cleaned up startup, dashboard, and diagnostics actions so each screen has one clearer primary move
-- added a stronger free daily-use loop with visible recent wins, taught phrases, fun-command usage, and streaks
-- added clearer premium personality pack framing and ambient moment prompts to make the robot feel more alive
-- hardened Android build prep so Play bundle generation clears stale Capacitor output automatically
+- added safer autonomous play voice commands like "go play", "start auto mode", and "talk to yourself"
+- added local conversation memory for phrases like "remember that..." and "what do you remember"
+- improved missed-phrase learning so unrecognized commands are easier to review and teach
+- fixed learned phrase cleanup so taught command management works from the app
+- expanded direct engine support for animations, saved photo sync, saved photo delete, and direct-mode diagnostics
+- kept learning local-first so user phrases and robot behavior stay on the user's own device/setup
 
 Shorter version if Play needs something tighter:
 
-- improved bridge recovery and health-state messaging
-- cleaned up mobile navigation and daily-use loop cues
-- made Android Play bundle generation more reliable
+- added autonomous play and self-talk commands
+- added local conversation memory and safer command learning
+- expanded direct engine animations, photo sync, and diagnostics
 
 Play upload checklist:
 
-- Use `app/android/app/build/outputs/bundle/release/Vector-Companion-0.1.39-260971915.aab`
+- Use `app/android/app/build/outputs/bundle/release/Vector-Companion-0.1.64-261381428.aab`
 - Confirm `versionCode` is higher than the one already on the target track
 - Keep `app/android/keystore.properties` and key files out of GitHub
 - `npm run mobile:android:bundle-release` now auto-bumps the Android version before building

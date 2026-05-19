@@ -22,7 +22,12 @@ import {
   createLocalRobotBridgeService,
   batteryVoltageToPercent
 } from "../services/localRobotBridge.js";
+import { createDirectVectorProvider } from "../services/directVectorProvider.js";
 import { createLocalBridgeManager } from "../services/localBridgeManager.js";
+import {
+  createPhotoEmailBatchService,
+  type PhotoEmailBatchConfig
+} from "../services/photoEmailBatchService.js";
 import { buildVoiceDiagnostics } from "../services/voiceDiagnosticsService.js";
 import { buildWirePodSetupStatus } from "../services/wirepodSetupService.js";
 import { createMockRobotController } from "./mockRobotController.js";
@@ -47,6 +52,7 @@ import type {
   DiagnosticCheckRecord,
   DiagnosticReportRecord,
   DiscoveredRobot,
+  PersonProfileRecord,
   RepairResultRecord,
   RepairStepRecord,
   RobotController,
@@ -67,6 +73,7 @@ export const createHybridRobotController = (options: {
   dataFilePath: string;
   wirePodBaseUrl: string;
   wirePodTimeoutMs?: number;
+  photoEmailBatch?: PhotoEmailBatchConfig;
 }): RobotController => {
   const store = createLocalStore(options.dataFilePath);
   const fallback = createMockRobotController();
@@ -78,13 +85,24 @@ export const createHybridRobotController = (options: {
   const managedBridge = createLocalBridgeManager({
     endpoint: options.wirePodBaseUrl
   });
+  const photoEmailBatch = options.photoEmailBatch
+    ? createPhotoEmailBatchService(options.photoEmailBatch)
+    : undefined;
 
   let lastIntegration: RobotIntegrationInfo = {
-    source: store.getState().settings.mockMode ? "mock" : "wirepod",
+    source:
+      store.getState().settings.mockMode
+        ? "mock"
+        : store.getState().settings.bridgeProviderPreference === "direct"
+          ? "direct"
+          : "wirepod",
     wirePodReachable: false,
     wirePodBaseUrl: store.getState().settings.savedWirePodEndpoint || options.wirePodBaseUrl,
-    bridgeProvider: "wirepod",
-    bridgeLabel: "WirePod compatibility bridge",
+    bridgeProvider: store.getState().settings.bridgeProviderPreference === "wirepod" ? "wirepod" : "embedded",
+    bridgeLabel:
+      store.getState().settings.bridgeProviderPreference === "wirepod"
+        ? "WirePod compatibility bridge"
+        : "Embedded Engine",
     bridgeReachable: false,
     bridgeBaseUrl: store.getState().settings.savedWirePodEndpoint || options.wirePodBaseUrl,
     managedBridge: managedBridge.getCachedStatus(),
@@ -156,6 +174,8 @@ export const createHybridRobotController = (options: {
       };
     }
   });
+  const directVector = createDirectVectorProvider();
+  let directCredentialsAvailable = false;
 
   let cachedRobot = buildOfflineRobot(store.getState().robotProfile, lastIntegration.note);
 
@@ -166,9 +186,14 @@ export const createHybridRobotController = (options: {
   const getSnapshots = () => store.getState().snapshots;
   const getSupportReports = () => store.getState().supportReports;
   const getAiMemory = () => store.getState().aiMemory;
+  const getPersonProfiles = () => store.getState().personProfiles;
   const getLearnedCommands = () => store.getState().learnedCommands;
   const getCommandGaps = () => store.getState().commandGaps;
   const getAutomationControl = () => store.getState().automationControl;
+  const getPreferredBridge = () => getSettings().bridgeProviderPreference ?? "auto";
+
+  const normalizePersonName = (name: string) => name.trim().replace(/\s+/g, " ");
+  const personKey = (name: string) => normalizePersonName(name).toLowerCase();
   const getRoamSessions = () => store.getState().roamSessions;
   const getSelectedSerial = () =>
     pickRobotSerial(
@@ -207,6 +232,134 @@ export const createHybridRobotController = (options: {
       });
     }
     return log;
+  };
+
+  const processPhotoEmailBatch = async (
+    serial: string | undefined,
+    snapshots: CameraSnapshotRecord[],
+    deleteRemotePhoto?: (remoteId: string) => Promise<unknown>
+  ) => {
+    if (!photoEmailBatch) {
+      return { snapshots, emailBatch: undefined };
+    }
+
+    const emailBatch = await photoEmailBatch.processBatch(snapshots);
+    if (!emailBatch.sent) {
+      if (emailBatch.attempted) {
+        pushLog(
+          makeLog(
+            "photo-email-batch",
+            { count: emailBatch.count, exportPath: emailBatch.exportPath },
+            "queued",
+            emailBatch.message
+          )
+        );
+      }
+      return { snapshots, emailBatch };
+    }
+
+    const sentSnapshots = snapshots.slice(0, photoEmailBatch.batchSize);
+    const sentIds = new Set(sentSnapshots.map((snapshot) => snapshot.id));
+    const sentRemoteIds = sentSnapshots
+      .map((snapshot) => snapshot.remoteId)
+      .filter((remoteId): remoteId is string => Boolean(remoteId));
+
+    if (photoEmailBatch.deleteRemote && serial) {
+      for (const remoteId of sentRemoteIds) {
+        await (deleteRemotePhoto?.(remoteId) ?? wirePod.deleteImage(serial, remoteId)).catch((error: unknown) => {
+          pushLog(
+            makeLog(
+              "photo-email-remote-delete",
+              { remoteId },
+              "error",
+              error instanceof Error ? error.message : "Remote photo delete failed."
+            )
+          );
+        });
+      }
+    }
+
+    const remainingSnapshots = snapshots.filter((snapshot) => !sentIds.has(snapshot.id));
+    store.saveSnapshots(remainingSnapshots);
+    pushLog(
+      makeLog(
+        "photo-email-batch",
+        { count: emailBatch.count, deleteRemote: photoEmailBatch.deleteRemote },
+        "success",
+        emailBatch.message
+      )
+    );
+
+    return { snapshots: remainingSnapshots, emailBatch };
+  };
+
+  const syncDirectPhotos = async () => {
+    const remotePhotos = (await directVector.getPhotoIds()).slice(0, 12);
+    const existingSnapshots = getSnapshots();
+    const byRemoteId = new Map(
+      existingSnapshots
+        .filter((snapshot) => snapshot.remoteId)
+        .map((snapshot) => [snapshot.remoteId as string, snapshot])
+    );
+
+    if (!remotePhotos.length) {
+      const note = "No saved robot photos yet. Ask Vector to take a photo, then sync again.";
+      pushLog(makeLog("photo-sync", { source: "direct", syncedCount: 0 }, "success", note));
+      return {
+        snapshots: existingSnapshots,
+        syncedCount: 0,
+        note
+      } satisfies CameraSyncResult;
+    }
+
+    let syncedCount = 0;
+    const syncedSnapshots: CameraSnapshotRecord[] = [];
+
+    for (const remotePhoto of remotePhotos) {
+      const existing = byRemoteId.get(remotePhoto.photoId);
+      if (existing && existing.dataUrl.length > 50_000) {
+        syncedSnapshots.push(existing);
+        continue;
+      }
+
+      const image = await directVector.getPhoto(remotePhoto.photoId, "full");
+      syncedSnapshots.push({
+        id: existing?.id ?? crypto.randomUUID(),
+        remoteId: remotePhoto.photoId,
+        createdAt: existing?.createdAt ?? remotePhoto.createdAt,
+        label: existing?.label ?? `Vector photo ${remotePhoto.photoId}`,
+        dataUrl: `data:${image.contentType};base64,${Buffer.from(image.buffer).toString("base64")}`,
+        motionScore: 0,
+        source: "direct"
+      });
+      syncedCount += 1;
+    }
+
+    const preservedLocalSnapshots = existingSnapshots.filter((snapshot) => !snapshot.remoteId);
+    const snapshots = [...syncedSnapshots, ...preservedLocalSnapshots].slice(0, 12);
+    store.saveSnapshots(snapshots);
+    const photoBatch = await processPhotoEmailBatch(
+      getSelectedSerial(),
+      snapshots,
+      (remoteId) => directVector.deletePhoto(remoteId)
+    );
+    const finalSnapshots = photoBatch.snapshots;
+    const note =
+      photoBatch.emailBatch?.sent
+        ? `${photoBatch.emailBatch.message} Local photo storage was cleared.`
+        : syncedCount > 0
+          ? `Synced ${syncedCount} robot photo${syncedCount === 1 ? "" : "s"} from Vector through direct SDK.`
+          : "Photo library is already up to date.";
+
+    pushLog(makeLog("photo-sync", { source: "direct", syncedCount, total: finalSnapshots.length }, "success", note));
+
+    return {
+      snapshots: finalSnapshots,
+      latestSnapshot: finalSnapshots[0],
+      syncedCount,
+      note,
+      emailBatch: photoBatch.emailBatch
+    } satisfies CameraSyncResult;
   };
 
   const chargingProtectionEnabled = (robot: RobotStatus) =>
@@ -730,6 +883,53 @@ export const createHybridRobotController = (options: {
       });
       return cachedRobot;
     }
+  };
+
+  const shouldUseDirectBridge = async () => {
+    if (getSettings().mockMode) {
+      return false;
+    }
+
+    if (process.env.VECTOR_DIRECT_ENABLED === "true") {
+      return true;
+    }
+
+    const preference = getPreferredBridge();
+    if (preference === "direct") {
+      return true;
+    }
+    if (preference === "wirepod") {
+      return false;
+    }
+    if (preference === "embedded") {
+      directCredentialsAvailable = await directVector.isConfigured();
+      return directCredentialsAvailable;
+    }
+
+    directCredentialsAvailable = await directVector.isConfigured();
+    return directCredentialsAvailable;
+  };
+
+  const refreshDirectStatus = async () => {
+    const robot = await directVector.getStatus();
+    directCredentialsAvailable = robot.isConnected || directCredentialsAvailable;
+
+    if (robot.serial) {
+      rememberSelectedRobot(robot.serial, robot.nickname || robot.name);
+    }
+
+    syncIntegration({
+      source: "direct",
+      bridgeProvider: "direct",
+      bridgeLabel: "Direct Vector SDK",
+      bridgeReachable: robot.isConnected,
+      bridgeBaseUrl: robot.ipAddress,
+      robotReachable: robot.isConnected,
+      selectedSerial: robot.serial || lastIntegration.selectedSerial,
+      note: robot.currentActivity
+    });
+
+    return applyRobotState(robot);
   };
 
   const withRealRobot = async <T>(
@@ -1489,6 +1689,11 @@ export const createHybridRobotController = (options: {
         });
       }
 
+      if (await shouldUseDirectBridge()) {
+        const robot = await refreshDirectStatus();
+        return runAutomationHeartbeat(robot);
+      }
+
       const robot = await refreshWirePodStatus();
       return runAutomationHeartbeat(robot);
     },
@@ -1516,6 +1721,24 @@ export const createHybridRobotController = (options: {
     discoverRobots: async () => {
       if (getSettings().mockMode) {
         return fallback.discoverRobots() as DiscoveredRobot[];
+      }
+
+      if (await shouldUseDirectBridge()) {
+        const robots = await directVector.discoverRobots();
+        const selectedSerial = robots[0]?.serial || lastIntegration.selectedSerial;
+        syncIntegration({
+          source: "direct",
+          bridgeProvider: "direct",
+          bridgeLabel: "Direct Vector SDK",
+          bridgeReachable: robots.length > 0,
+          bridgeBaseUrl: robots[0]?.ipAddress || lastIntegration.bridgeBaseUrl,
+          robotReachable: robots.length > 0,
+          selectedSerial,
+          note: robots.length
+            ? "Direct Vector SDK credentials are ready."
+            : "Direct Vector SDK credentials were not found yet."
+        });
+        return robots;
       }
 
       try {
@@ -1585,6 +1808,22 @@ export const createHybridRobotController = (options: {
         return applyRobotState(nextRobot);
       }
 
+      if (await shouldUseDirectBridge()) {
+        const nextRobot = await refreshDirectStatus();
+        pushLog(
+          makeLog(
+            "connect",
+            { ipAddress: payload?.ipAddress, serial: nextRobot.serial },
+            nextRobot.isConnected ? "success" : "error",
+            nextRobot.isConnected
+              ? `Connected to ${nextRobot.nickname ?? nextRobot.name} through direct Vector SDK.`
+              : nextRobot.currentActivity || "Direct Vector SDK is not configured yet."
+          ),
+          nextRobot
+        );
+        return nextRobot;
+      }
+
       const nextRobot = await refreshWirePodStatus(payload);
       pushLog(
         makeLog(
@@ -1607,6 +1846,20 @@ export const createHybridRobotController = (options: {
         return applyRobotState(nextRobot);
       }
 
+      if (await shouldUseDirectBridge()) {
+        const nextRobot = await directVector.disconnect();
+        syncIntegration({
+          source: "direct",
+          bridgeProvider: "direct",
+          bridgeLabel: "Direct Vector SDK",
+          bridgeReachable: false,
+          robotReachable: false,
+          note: nextRobot.currentActivity
+        });
+        pushLog(makeLog("disconnect", {}, "success", "Disconnected direct Vector SDK session."), nextRobot);
+        return applyRobotState(nextRobot);
+      }
+
       const nextRobot = applyRobotState({
         ...cachedRobot,
         isConnected: false,
@@ -1621,8 +1874,22 @@ export const createHybridRobotController = (options: {
       return nextRobot;
     },
 
-    drive: async ({ direction, speed, durationMs }) =>
-      runMockOrThrow(
+    drive: async ({ direction, speed, durationMs }) => {
+      if (!getSettings().mockMode && await shouldUseDirectBridge()) {
+        const robot = await refreshDirectStatus();
+        if (direction !== "stop" && chargingProtectionEnabled(robot)) {
+          return blockWhileCharging(
+            "drive",
+            { direction, speed, durationMs },
+            robot,
+            "Drive commands"
+          );
+        }
+        setBusy(`Running ${direction} drive command.`);
+        return pushLog(await directVector.drive({ direction, speed, durationMs }));
+      }
+
+      return runMockOrThrow(
         () => fallback.drive({ direction, speed, durationMs }) as CommandLogRecord,
         `Running ${direction} drive command.`,
         async (serial, robot) => {
@@ -1663,10 +1930,16 @@ export const createHybridRobotController = (options: {
               : commands.message;
           return pushLog(makeLog("drive", { direction, speed, durationMs }, "success", message));
         }
-      ),
+      );
+    },
 
-    head: async ({ angle }) =>
-      runMockOrThrow(
+    head: async ({ angle }) => {
+      if (!getSettings().mockMode && await shouldUseDirectBridge()) {
+        setBusy("Adjusting head position.");
+        return pushLog(await directVector.head({ angle }));
+      }
+
+      return runMockOrThrow(
         () => fallback.head({ angle }) as CommandLogRecord,
         "Adjusting head position.",
         async (serial) => {
@@ -1681,10 +1954,16 @@ export const createHybridRobotController = (options: {
           lastHeadAngle = angle;
           return pushLog(makeLog("head", { angle }, "success", `Head adjusted to ${angle} degrees.`));
         }
-      ),
+      );
+    },
 
-    lift: async ({ height }) =>
-      runMockOrThrow(
+    lift: async ({ height }) => {
+      if (!getSettings().mockMode && await shouldUseDirectBridge()) {
+        setBusy("Adjusting lift height.");
+        return pushLog(await directVector.lift({ height }));
+      }
+
+      return runMockOrThrow(
         () => fallback.lift({ height }) as CommandLogRecord,
         "Adjusting lift height.",
         async (serial) => {
@@ -1699,10 +1978,16 @@ export const createHybridRobotController = (options: {
           lastLiftHeight = height;
           return pushLog(makeLog("lift", { height }, "success", `Lift adjusted to ${height}%.`));
         }
-      ),
+      );
+    },
 
-    speak: async ({ text }) =>
-      runMockOrThrow(
+    speak: async ({ text }) => {
+      if (!getSettings().mockMode && await shouldUseDirectBridge()) {
+        setBusy("Speaking through Vector.", 9_500);
+        return pushLog(await directVector.speak({ text }));
+      }
+
+      return runMockOrThrow(
         () => fallback.speak({ text }) as CommandLogRecord,
         "Sending speech to Vector.",
         async (serial, robot) => {
@@ -1716,13 +2001,35 @@ export const createHybridRobotController = (options: {
           await wirePod.sayText(serial, text);
           return pushLog(makeLog("speak", { text }, "success", `Speaking: ${text}`));
         }
-      ),
+      );
+    },
 
     animation: async ({ animationId }) =>
-      runMockOrThrow(
-        () => fallback.animation({ animationId }) as CommandLogRecord,
-        "Playing animation.",
-        async (serial, robot) => {
+      {
+        if (!getSettings().mockMode && await shouldUseDirectBridge()) {
+          const robot = await refreshDirectStatus();
+          const intent =
+            animationIntentMap[animationId] ??
+            (animationId.startsWith("intent_") || animationId.startsWith("explore_")
+              ? animationId
+              : "intent_imperative_dance");
+          const safeWhileCharging = isAnimationSafeWhileCharging(intent);
+          if (chargingProtectionEnabled(robot) && !safeWhileCharging) {
+            return blockWhileCharging(
+              "animation",
+              { animationId, intent },
+              robot,
+              "Movement-heavy animations"
+            );
+          }
+          setBusy("Playing animation.", 6_500);
+          return pushLog(await directVector.animation({ animationId: intent }));
+        }
+
+        return runMockOrThrow(
+          () => fallback.animation({ animationId }) as CommandLogRecord,
+          "Playing animation.",
+          async (serial, robot) => {
           const intent =
             animationIntentMap[animationId] ??
             (animationId.startsWith("intent_") || animationId.startsWith("explore_")
@@ -1754,11 +2061,28 @@ export const createHybridRobotController = (options: {
           return pushLog(
             makeLog("animation", { animationId, intent }, "success", `Animation intent sent for ${animationId}.`)
           );
-        }
-      ),
+          }
+        );
+      },
 
-    dock: async () =>
-      runMockOrThrow(
+    dock: async () => {
+      if (!getSettings().mockMode && await shouldUseDirectBridge()) {
+        const robot = await refreshDirectStatus();
+        if (robot.isDocked) {
+          return pushLog(
+            makeLog("dock", { serial: robot.serial }, "success", "Vector is already on the charger."),
+            applyRobotState({
+              ...robot,
+              isDocked: true,
+              currentActivity: "Already on the charger."
+            })
+          );
+        }
+        setBusy("Returning to dock.");
+        return pushLog(await directVector.dock());
+      }
+
+      return runMockOrThrow(
         () => fallback.dock() as CommandLogRecord,
         "Returning to dock.",
         async (serial, robot) => {
@@ -1792,10 +2116,20 @@ export const createHybridRobotController = (options: {
             })
           );
         }
-      ),
+      );
+    },
 
-    wake: async () =>
-      runMockOrThrow(
+    wake: async () => {
+      if (!getSettings().mockMode && await shouldUseDirectBridge()) {
+        const robot = await refreshDirectStatus();
+        if (chargingProtectionEnabled(robot)) {
+          return blockWhileCharging("wake", { serial: robot.serial }, robot, "Wake requests");
+        }
+        setBusy("Waking Vector.");
+        return pushLog(await directVector.wake());
+      }
+
+      return runMockOrThrow(
         () => fallback.wake() as CommandLogRecord,
         "Waking Vector.",
         async (serial, robot) => {
@@ -1814,7 +2148,8 @@ export const createHybridRobotController = (options: {
             })
           );
         }
-      ),
+      );
+    },
 
     toggleMute: async ({ isMuted }) =>
       runMockOrThrow(
@@ -1853,6 +2188,10 @@ export const createHybridRobotController = (options: {
         return fallback.syncPhotos() as CameraSyncResult;
       }
 
+      if (await shouldUseDirectBridge()) {
+        return syncDirectPhotos();
+      }
+
       return withRealRobot("Syncing robot photos.", async (serial) => {
         const remoteIds = Array.from(new Set(await wirePod.getImageIds(serial)))
           .sort((left, right) => Number(right) - Number(left))
@@ -1879,17 +2218,17 @@ export const createHybridRobotController = (options: {
 
         for (const remoteId of remoteIds) {
           const existing = byRemoteId.get(remoteId);
-          if (existing) {
+          if (existing && existing.dataUrl.length > 50_000) {
             syncedSnapshots.push(existing);
             continue;
           }
 
-          const image = await wirePod.getImage(serial, remoteId, "thumb");
+          const image = await wirePod.getImage(serial, remoteId, "full");
           syncedSnapshots.push({
-            id: crypto.randomUUID(),
+            id: existing?.id ?? crypto.randomUUID(),
             remoteId,
-            createdAt: new Date().toISOString(),
-            label: `Vector photo ${remoteId}`,
+            createdAt: existing?.createdAt ?? new Date().toISOString(),
+            label: existing?.label ?? `Vector photo ${remoteId}`,
             dataUrl: `data:${image.contentType};base64,${Buffer.from(image.buffer).toString("base64")}`,
             motionScore: 0,
             source: "wirepod"
@@ -1900,19 +2239,24 @@ export const createHybridRobotController = (options: {
         const preservedLocalSnapshots = existingSnapshots.filter((snapshot) => !snapshot.remoteId);
         const snapshots = [...syncedSnapshots, ...preservedLocalSnapshots].slice(0, 12);
         store.saveSnapshots(snapshots);
+        const photoBatch = await processPhotoEmailBatch(serial, snapshots);
+        const finalSnapshots = photoBatch.snapshots;
 
         const note =
-          syncedCount > 0
+          photoBatch.emailBatch?.sent
+            ? `${photoBatch.emailBatch.message} Local photo storage was cleared.`
+            : syncedCount > 0
             ? `Synced ${syncedCount} robot photo${syncedCount === 1 ? "" : "s"} from Vector.`
             : "Photo library is already up to date.";
 
-        pushLog(makeLog("photo-sync", { serial, syncedCount, total: snapshots.length }, "success", note));
+        pushLog(makeLog("photo-sync", { serial, syncedCount, total: finalSnapshots.length }, "success", note));
 
         return {
-          snapshots,
-          latestSnapshot: syncedSnapshots[0],
+          snapshots: finalSnapshots,
+          latestSnapshot: finalSnapshots[0],
           syncedCount,
-          note
+          note,
+          emailBatch: photoBatch.emailBatch
         } satisfies CameraSyncResult;
       });
     },
@@ -1920,6 +2264,12 @@ export const createHybridRobotController = (options: {
     capturePhoto: async () => {
       if (getSettings().mockMode) {
         return fallback.capturePhoto() as CameraSyncResult;
+      }
+
+      if (await shouldUseDirectBridge()) {
+        throw new Error(
+          "Direct photo capture is not available yet. Sync saved robot photos instead, or switch to compatibility mode for capture."
+        );
       }
 
       return withRealRobot("Capturing a robot photo.", async (serial, robot) => {
@@ -1950,17 +2300,17 @@ export const createHybridRobotController = (options: {
 
           for (const remoteId of remoteIds) {
             const existing = byRemoteId.get(remoteId);
-            if (existing) {
+            if (existing && existing.dataUrl.length > 50_000) {
               syncedSnapshots.push(existing);
               continue;
             }
 
-            const image = await wirePod.getImage(serial, remoteId, "thumb");
+            const image = await wirePod.getImage(serial, remoteId, "full");
             syncedSnapshots.push({
-              id: crypto.randomUUID(),
+              id: existing?.id ?? crypto.randomUUID(),
               remoteId,
-              createdAt: new Date().toISOString(),
-              label: `Vector photo ${remoteId}`,
+              createdAt: existing?.createdAt ?? new Date().toISOString(),
+              label: existing?.label ?? `Vector photo ${remoteId}`,
               dataUrl: `data:${image.contentType};base64,${Buffer.from(image.buffer).toString("base64")}`,
               motionScore: 0,
               source: "wirepod"
@@ -1971,14 +2321,19 @@ export const createHybridRobotController = (options: {
           const preservedLocalSnapshots = existingSnapshots.filter((snapshot) => !snapshot.remoteId);
           const snapshots = [...syncedSnapshots, ...preservedLocalSnapshots].slice(0, 12);
           store.saveSnapshots(snapshots);
+          const photoBatch = await processPhotoEmailBatch(serial, snapshots);
+          const finalSnapshots = photoBatch.snapshots;
           return {
-            snapshots,
-            latestSnapshot: syncedSnapshots[0],
+            snapshots: finalSnapshots,
+            latestSnapshot: finalSnapshots[0],
             syncedCount,
             note:
-              syncedCount > 0
+              photoBatch.emailBatch?.sent
+                ? `${photoBatch.emailBatch.message} Local photo storage was cleared.`
+                : syncedCount > 0
                 ? `Vector captured a new photo and synced ${syncedCount} item${syncedCount === 1 ? "" : "s"}.`
-                : "Vector captured the photo command, but the saved library did not change yet."
+                : "Vector captured the photo command, but the saved library did not change yet.",
+            emailBatch: photoBatch.emailBatch
           } satisfies CameraSyncResult;
         })();
 
@@ -2160,6 +2515,10 @@ export const createHybridRobotController = (options: {
         return fallback.getCameraStreamUrl();
       }
 
+      if (await shouldUseDirectBridge()) {
+        return undefined;
+      }
+
       const robot = await refreshWirePodStatus();
       const serial = selectSerial(
         robot.serial,
@@ -2179,6 +2538,10 @@ export const createHybridRobotController = (options: {
     getPhotoImage: async (photoId, variant = "full") => {
       if (getSettings().mockMode) {
         return fallback.getPhotoImage(photoId, variant) as CameraImageAsset;
+      }
+
+      if (await shouldUseDirectBridge()) {
+        return directVector.getPhoto(photoId, variant);
       }
 
       const robot = await refreshWirePodStatus();
@@ -2204,6 +2567,37 @@ export const createHybridRobotController = (options: {
     deletePhoto: async (photoId) => {
       if (getSettings().mockMode) {
         return fallback.deletePhoto(photoId) as CameraSyncResult;
+      }
+
+      if (await shouldUseDirectBridge()) {
+        const existingSnapshots = getSnapshots();
+        const targetSnapshot = existingSnapshots.find(
+          (snapshot) => snapshot.id === photoId || snapshot.remoteId === photoId
+        );
+
+        if (!targetSnapshot) {
+          throw new Error("That photo could not be found.");
+        }
+
+        if (targetSnapshot.remoteId) {
+          await directVector.deletePhoto(targetSnapshot.remoteId);
+        }
+
+        const snapshots = existingSnapshots.filter((snapshot) => snapshot.id !== targetSnapshot.id);
+        store.saveSnapshots(snapshots);
+        pushLog(
+          makeLog(
+            "photo-delete",
+            { photoId, remoteId: targetSnapshot.remoteId, source: "direct" },
+            "success",
+            `Deleted ${targetSnapshot.label}.`
+          )
+        );
+        return {
+          snapshots,
+          syncedCount: 0,
+          note: `Deleted ${targetSnapshot.label}.`
+        } satisfies CameraSyncResult;
       }
 
       const robot = await refreshWirePodStatus();
@@ -2359,6 +2753,65 @@ export const createHybridRobotController = (options: {
       return nextMemory;
     },
 
+    getPersonProfiles: () => getPersonProfiles(),
+
+    learnPersonProfile: async ({ name, source = "voice", notes }): Promise<PersonProfileRecord> => {
+      const cleanName = normalizePersonName(name);
+      const normalizedName = personKey(cleanName);
+      const now = new Date().toISOString();
+      const existing = getPersonProfiles().find((profile) => profile.normalizedName === normalizedName);
+      const nextProfile: PersonProfileRecord = existing
+        ? {
+            ...existing,
+            name: cleanName,
+            source,
+            lastSeenAt: now,
+            notes: notes ?? existing.notes
+          }
+        : {
+            id: crypto.randomUUID(),
+            name: cleanName,
+            normalizedName,
+            source,
+            faceSamples: 0,
+            firstSeenAt: now,
+            lastSeenAt: now,
+            notes
+          };
+
+      store.savePersonProfiles([
+        nextProfile,
+        ...getPersonProfiles().filter((profile) => profile.id !== nextProfile.id)
+      ]);
+      pushLog(
+        makeLog(
+          "person-profile-learn",
+          { name: cleanName, source, faceSamples: nextProfile.faceSamples },
+          "success",
+          `Learned person profile for ${cleanName}.`
+        )
+      );
+      return nextProfile;
+    },
+
+    clearPersonProfiles: async () => {
+      const cleared = getPersonProfiles().length;
+      store.savePersonProfiles([]);
+      store.saveSettings({ userName: undefined });
+      pushLog(
+        makeLog(
+          "person-profile-clear",
+          { cleared },
+          "success",
+          "Cleared saved people and app-side face memory. Ready to learn the next person."
+        )
+      );
+      return {
+        cleared,
+        message: "Saved people were cleared. Vector is ready to learn the next person."
+      };
+    },
+
     getLearnedCommands: () => getLearnedCommands(),
 
     saveLearnedCommand: async ({ phrase, targetPrompt }) => {
@@ -2433,6 +2886,122 @@ export const createHybridRobotController = (options: {
       if (getSettings().mockMode) {
         const report = fallback.runDiagnostics() as DiagnosticReportRecord;
         pushLog(makeLog("diagnostics", { mode: "mock" }, "success", report.summary));
+        return report;
+      }
+
+      if (await shouldUseDirectBridge()) {
+        const robot = await refreshDirectStatus();
+        const successLog = latestSuccessfulCommand();
+        const failedLog = latestFailedCommand();
+        const checks: DiagnosticCheckRecord[] = [
+          {
+            id: crypto.randomUUID(),
+            label: "Direct engine credentials",
+            category: "network",
+            status: directCredentialsAvailable ? "pass" : "fail",
+            metric: directCredentialsAvailable ? "Ready" : "Missing",
+            details: directCredentialsAvailable
+              ? "The app found local Vector SDK credentials for direct robot control."
+              : "Import sdk_config.ini or finish pairing before using direct robot control."
+          },
+          {
+            id: crypto.randomUUID(),
+            label: "Robot connectivity",
+            category: "network",
+            status: robot.isConnected ? "pass" : "warn",
+            metric: robot.isConnected ? "Online" : "Offline",
+            details: robot.isConnected
+              ? "Vector responded through the direct SDK path."
+              : robot.currentActivity || "Vector did not answer the direct SDK health check yet."
+          },
+          {
+            id: crypto.randomUUID(),
+            label: "Battery",
+            category: "power",
+            status:
+              robot.isDocked && !robot.isCharging
+                ? "warn"
+                : robot.batteryPercent > 20
+                  ? "pass"
+                  : "warn",
+            metric: `${robot.batteryPercent}%`,
+            details: robot.isCharging
+              ? "Vector is currently charging on the dock."
+              : robot.isDocked
+                ? "Vector is docked, but the charger is not feeding power right now. Reseat the robot and check the contacts."
+                : robot.batteryPercent > 20
+                  ? "Battery is healthy enough for local movement."
+                  : "Battery is low. Dock soon."
+          },
+          {
+            id: crypto.randomUUID(),
+            label: "Charging protection",
+            category: "power",
+            status: getSettings().protectChargingUntilFull ? "pass" : "warn",
+            metric: getSettings().protectChargingUntilFull ? "On" : "Off",
+            details: getSettings().protectChargingUntilFull
+              ? `Wake, drive, roam, and larger animations stay blocked on the charger until Vector is around ${CHARGING_PROTECTION_RELEASE_PERCENT}%.`
+              : "Vector can still be woken or moved while on the charger."
+          },
+          {
+            id: crypto.randomUUID(),
+            label: "Photo library",
+            category: "vision",
+            status: robot.cameraAvailable ? "pass" : "warn",
+            metric: robot.cameraAvailable ? "Direct sync available" : "Unavailable",
+            details: robot.cameraAvailable
+              ? "Saved robot photos can sync through the direct SDK path."
+              : "Photo sync waits until the direct SDK connection is healthy."
+          },
+          {
+            id: crypto.randomUUID(),
+            label: "Last successful command",
+            category: "motion",
+            status: successLog ? "pass" : "warn",
+            metric: successLog?.type ?? "None yet",
+            details: successLog?.resultMessage ?? "No successful commands have been logged yet."
+          },
+          {
+            id: crypto.randomUUID(),
+            label: "Last failed command",
+            category: "audio",
+            status: failedLog ? "warn" : "pass",
+            metric: failedLog?.type ?? "None",
+            details: failedLog?.resultMessage ?? "No recent failed commands."
+          },
+          {
+            id: crypto.randomUUID(),
+            label: "Local logs",
+            category: "storage",
+            status: getLogs().length > 0 ? "pass" : "warn",
+            metric: `${getLogs().length} records`,
+            details: "The app keeps a rolling local log to help with troubleshooting."
+          }
+        ];
+
+        const report: DiagnosticReportRecord = {
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          overallStatus: checks.some((check) => check.status === "fail")
+            ? "critical"
+            : checks.some((check) => check.status === "warn")
+              ? "attention"
+              : "healthy",
+          summary: robot.isConnected
+            ? "Diagnostics passed through the direct Vector SDK path."
+            : "Direct engine is selected, but Vector is not answering yet.",
+          robotName: robot.nickname ?? robot.name,
+          checks,
+          troubleshooting: robot.isConnected
+            ? ["If movement feels delayed, keep Vector and this device on the same Wi-Fi network."]
+            : [
+                "Import sdk_config.ini or finish pairing so direct mode has local credentials.",
+                "Keep Vector powered on and on the same Wi-Fi network.",
+                "If direct mode still fails, temporarily switch to compatibility mode while we collect more logs."
+              ]
+        };
+
+        pushLog(makeLog("diagnostics", { overallStatus: report.overallStatus, source: "direct" }, "success", report.summary));
         return report;
       }
 

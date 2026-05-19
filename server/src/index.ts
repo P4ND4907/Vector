@@ -23,7 +23,23 @@ export const createServerApp = (env = buildEnv()) => {
   const controller = createHybridRobotController({
     wirePodBaseUrl: env.wirePodBaseUrl,
     wirePodTimeoutMs: env.wirePodTimeoutMs,
-    dataFilePath: env.dataFilePath
+    dataFilePath: env.dataFilePath,
+    photoEmailBatch: env.photoEmailEnabled
+      ? {
+          to: env.photoEmailTo,
+          from: env.photoEmailFrom,
+          batchSize: env.photoEmailBatchSize,
+          deleteRemote: env.photoEmailDeleteRemote,
+          outboxDirectory: path.resolve(path.dirname(env.dataFilePath), "photo-outbox"),
+          smtp: {
+            host: env.smtpHost,
+            port: env.smtpPort,
+            secure: env.smtpSecure,
+            user: env.smtpUser,
+            pass: env.smtpPass
+          }
+        }
+      : undefined
   });
   const licenseService = createLicenseService(path.resolve(path.dirname(env.dataFilePath), "license.json"));
   const licenseRouter = createLicenseRouter(licenseService);

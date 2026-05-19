@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { RobotController } from "../robot/types.js";
-import { createEmbeddedProvider, createMockProvider, createWirePodProvider } from "./providers.js";
+import { createDirectProvider, createEmbeddedProvider, createMockProvider, createWirePodProvider } from "./providers.js";
 import { type BridgeProviderName, createEngineSettingsStore, createPairingStore } from "./stores.js";
 
 export const createBridgeProviderManager = (controller: RobotController, dataFilePath: string) => {
@@ -10,6 +10,7 @@ export const createBridgeProviderManager = (controller: RobotController, dataFil
 
   const providers = {
     embedded: createEmbeddedProvider(controller),
+    direct: createDirectProvider(controller),
     wirepod: createWirePodProvider(controller),
     mock: createMockProvider(controller)
   } as const;

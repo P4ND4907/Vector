@@ -139,7 +139,7 @@ export function DashboardPage() {
     connectState.message ||
     (chargingProtectionActive ? getChargingProtectionMessage() : healthState.detail) ||
     integration.note ||
-    "If the local bridge restarts, the dashboard will retry and keep the error plain-English.";
+    "If the engine restarts, Home will retry and keep the error plain-English.";
   const primaryAction =
     healthState.id === "ready"
       ? {
@@ -187,7 +187,7 @@ export function DashboardPage() {
 
     return [
       "The bridge and robot look stable right now.",
-      "Use controls, speech, or AI commands from this dashboard.",
+      "Use controls, speech, or Ask from Home.",
       "Open Diagnostics whenever you want a quick confidence check."
     ];
   }, [healthState.id]);
@@ -291,16 +291,16 @@ export function DashboardPage() {
           <CardContent className="grid gap-6 p-6 xl:p-7 2xl:grid-cols-[minmax(0,1.16fr)_minmax(300px,0.84fr)]">
             <div className="space-y-6">
               <div className="space-y-3">
-                <div className="eyebrow">Main dashboard</div>
-                <h2 className="text-3xl font-semibold">Your Vector control center.</h2>
+                <div className="eyebrow">Home</div>
+                <h2 className="text-3xl font-semibold">What Vector needs next.</h2>
                 <p className="max-w-2xl text-sm text-muted-foreground">
-                  See what is online, what needs attention, and what to do next without digging through backend tools.
+                  One clear status, one best action, and quick access to the things people actually use.
                 </p>
               </div>
 
               <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.04fr)_minmax(0,0.96fr)]">
                 <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-                  <div className="text-sm text-muted-foreground">Status snapshot</div>
+                  <div className="text-sm text-muted-foreground">Now</div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Badge className={healthToneClassName[healthState.tone]}>{healthState.badgeLabel}</Badge>
                     <Badge className={statusTone[systemStatus.toneKey]}>{systemStatus.label}</Badge>
@@ -324,7 +324,7 @@ export function DashboardPage() {
                 </div>
 
                 <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-                  <div className="text-sm text-muted-foreground">What to do next</div>
+                  <div className="text-sm text-muted-foreground">Best next step</div>
                   <div className="mt-3 text-xl font-semibold">{healthState.summary}</div>
                   <p className="mt-2 text-sm text-muted-foreground">
                     {healthState.detail}
@@ -376,7 +376,7 @@ export function DashboardPage() {
                 <Link to="/drive">
                   <Button className="w-full" variant="outline">
                     <Gamepad2 className="h-4 w-4" />
-                    Open controls
+                      Control
                   </Button>
                 </Link>
                 <Link to="/speech">
@@ -388,12 +388,12 @@ export function DashboardPage() {
                 <Link to="/ai">
                   <Button className="w-full" variant="outline">
                     <BrainCircuit className="h-4 w-4" />
-                    AI commands
+                    Ask
                   </Button>
                 </Link>
                 <Button className="sm:col-span-2 xl:col-span-1" variant="ghost" onClick={runDiagnostics}>
                   <ShieldCheck className="h-4 w-4" />
-                  Diagnostics
+                  Fix
                 </Button>
               </div>
 
@@ -420,7 +420,7 @@ export function DashboardPage() {
               <div className="rounded-3xl border border-primary/20 bg-primary/[0.06] p-4">
                 <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-primary/80">
                   <BadgeDollarSign className="h-3.5 w-3.5" />
-                  Keep momentum
+                  Recent wins
                 </div>
                 <div className="mt-2 text-lg font-semibold text-foreground">{usageLoop.headline}</div>
                 <p className="mt-2 text-sm text-muted-foreground">{usageLoop.summary}</p>
@@ -467,7 +467,7 @@ export function DashboardPage() {
                     Teach a phrase
                   </Button>
                   <Link to="/upgrade">
-                    <Button>See Pro extras</Button>
+                    <Button>Pro extras</Button>
                   </Link>
                 </div>
               </div>
@@ -475,7 +475,7 @@ export function DashboardPage() {
 
             <div className="min-w-0 space-y-4">
               <div>
-                <div className="eyebrow">Connection details</div>
+                <div className="eyebrow">Quick facts</div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Badge className={healthToneClassName[healthState.tone]}>{healthState.badgeLabel}</Badge>
                   <Badge>{brainStatus}</Badge>
@@ -517,15 +517,15 @@ export function DashboardPage() {
 
               <Link to="/upgrade" className="block">
                 <div className="rounded-3xl border border-emerald-300/18 bg-emerald-300/8 p-4 transition-colors hover:bg-emerald-300/10">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                     <BadgeDollarSign className="h-4 w-4 text-primary" />
-                    Revenue plan
+                    Pro plan
                   </div>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    Open the pricing, checkout, and support plan so this project can start earning instead of just shipping features.
+                    Unlock automation, routines, richer diagnostics, and future remote access.
                   </p>
                   <div className="mt-3 flex items-center gap-2 text-sm font-medium text-primary">
-                    Open Upgrade
+                    Open Pro
                     <ChevronRight className="h-4 w-4" />
                   </div>
                 </div>
@@ -646,7 +646,7 @@ export function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Ready routines</CardTitle>
-            <CardDescription>Run the routines that are already enabled without leaving the dashboard.</CardDescription>
+            <CardDescription>Run enabled routines without leaving Home.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {enabledRoutines.length ? (

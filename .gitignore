@@ -13,6 +13,9 @@ server/server/data
 server/.env.local
 .env.local
 .runtime
+.khepr-build-cache
+.khepr-remote-cache
+.pandora-workspace-remote-cache
 .edge-headless
 release
 dist-electron

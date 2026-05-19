@@ -139,6 +139,7 @@ export const createRobotRouter = (controller: RobotController) => {
       latestSnapshot: result.latestSnapshot,
       syncedCount: result.syncedCount,
       note: result.note,
+      emailBatch: result.emailBatch,
       streamUrl: await controller.getCameraStreamUrl()
     });
   }));
@@ -150,6 +151,7 @@ export const createRobotRouter = (controller: RobotController) => {
       latestSnapshot: result.latestSnapshot,
       syncedCount: result.syncedCount,
       note: result.note,
+      emailBatch: result.emailBatch,
       streamUrl: await controller.getCameraStreamUrl()
     });
   }));

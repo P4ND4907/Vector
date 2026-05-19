@@ -76,7 +76,7 @@ export function PairingPage() {
     : setupAnotherRobotIntent
       ? "Saved-target reconnects are paused on this screen so you can finish the new-robot path without the old robot snapping back in."
     : isConnected
-      ? "The robot link is live, so you can jump straight into the dashboard or switch to another Vector here."
+      ? "The robot link is live, so you can jump straight into Home or switch to another Vector here."
       : integration.wirePodReachable
         ? effectiveSavedSerial
           ? "The app already knows a robot serial. Reconnect fast, or scan if you want to swap to a different robot."
@@ -150,15 +150,15 @@ export function PairingPage() {
     <div className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
       <Card>
         <CardHeader>
-          <div className="eyebrow">Pairing and setup</div>
-          <CardTitle>Let the dashboard find the local bridge first, then lock onto the right Vector serial.</CardTitle>
+          <div className="eyebrow">Connect</div>
+          <CardTitle>Find Vector, save him once, then reconnect automatically.</CardTitle>
           <CardDescription>
-            Users should not need the bridge UI. Discovery, serial selection, and reconnect preferences all stay here.
+            Start with Scan. Manual details stay below for edge cases.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-            <div className="eyebrow">Smart next step</div>
+            <div className="eyebrow">Best next step</div>
             <div className="mt-2 text-2xl font-semibold">{statusTitle}</div>
             <p className="mt-2 text-sm text-muted-foreground">{statusDetail}</p>
 
@@ -176,7 +176,7 @@ export function PairingPage() {
               ) : isConnected ? (
                 <Button onClick={() => navigate("/dashboard")}>
                   <ArrowRight className="h-4 w-4" />
-                  Open dashboard
+                  Open Home
                 </Button>
               ) : effectiveSavedSerial ? (
                 <Button onClick={() => void connectRobot()} disabled={connectState.status === "loading"}>
@@ -192,7 +192,7 @@ export function PairingPage() {
 
               <Button variant="outline" onClick={() => navigate("/setup/new-robot")}>
                 <Bot className="h-4 w-4" />
-                {setupAnotherRobotIntent ? "Back to guided setup" : "Guided setup"}
+                {setupAnotherRobotIntent ? "Back to setup" : "Guided setup"}
               </Button>
             </div>
           </div>
@@ -221,12 +221,12 @@ export function PairingPage() {
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-              <div className="text-sm text-muted-foreground">Detected endpoint</div>
+              <div className="text-sm text-muted-foreground">Engine endpoint</div>
               <div className="mt-2 text-lg font-semibold">{integration.wirePodBaseUrl}</div>
               <p className="mt-2 text-sm text-muted-foreground">
                 {integration.wirePodReachable
-                  ? "The local bridge is reachable from the app backend."
-                  : "The app cannot reach the local bridge right now."}
+                  ? "The app can reach the local engine."
+                  : "The app cannot reach the local engine right now."}
               </p>
             </div>
             <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
@@ -241,12 +241,12 @@ export function PairingPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={scanForRobots}>
+            <Button size="lg" onClick={scanForRobots}>
               <Search className="h-4 w-4" />
               Scan for robots
             </Button>
             <Button variant="outline" onClick={() => navigate("/setup/new-robot")}>
-              Guided new robot setup
+              Guided setup
             </Button>
             <div className="flex items-center gap-3">
               <Switch
@@ -316,7 +316,7 @@ export function PairingPage() {
               ))
             ) : (
               <div className="rounded-3xl border border-dashed border-white/10 p-6 text-sm text-muted-foreground">
-                No discovered robots yet. Run a scan and any authenticated local-bridge robots will appear here.
+                No robots found yet. Tap Scan for robots and keep Vector on the same Wi-Fi.
               </div>
             )}
           </div>
@@ -381,7 +381,7 @@ export function PairingPage() {
 
             <PairingMobileSection
               title="Manual robot profile"
-              description="Keep the advanced override fields available without making them the default path."
+              description="Only use this if scan cannot find Vector."
             >
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -414,12 +414,12 @@ export function PairingPage() {
 
             <PairingMobileSection
               title="Reliability defaults"
-              description="These are the guardrails that make the mobile companion feel automatic."
+              description="Defaults that keep reconnect simple."
             >
               <div className="space-y-3 text-sm text-muted-foreground">
                 <div className="flex items-center gap-3">
                   <Wifi className="h-4 w-4 text-primary" />
-                  Auto-detect keeps the local backend invisible for most users.
+                  Auto-detect keeps setup invisible for most users.
                 </div>
                 <div className="flex items-center gap-3">
                   <ShieldCheck className="h-4 w-4 text-primary" />
@@ -427,7 +427,7 @@ export function PairingPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <Waypoints className="h-4 w-4 text-primary" />
-                Clear error copy helps users tell the difference between the local bridge being offline and the robot being offline.
+                Clear messages explain whether the app or Vector needs attention.
                 </div>
               </div>
             </PairingMobileSection>
@@ -442,7 +442,7 @@ export function PairingPage() {
           <CardHeader>
             <CardTitle>Manual robot profile</CardTitle>
             <CardDescription>
-              Keep manual override fields available for edge cases without making them the default path.
+              Only use these fields if scan cannot find Vector.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -537,7 +537,7 @@ export function PairingPage() {
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             <div className="flex items-center gap-3">
               <Wifi className="h-4 w-4 text-primary" />
-              Auto-detect keeps the local backend invisible for most users.
+              Auto-detect keeps setup invisible for most users.
             </div>
             <div className="flex items-center gap-3">
               <ShieldCheck className="h-4 w-4 text-primary" />
@@ -545,7 +545,7 @@ export function PairingPage() {
             </div>
             <div className="flex items-center gap-3">
               <Waypoints className="h-4 w-4 text-primary" />
-                Clear error copy helps users tell the difference between the local bridge being offline and the robot being offline.
+                Clear messages explain whether the app or Vector needs attention.
             </div>
           </CardContent>
         </Card>

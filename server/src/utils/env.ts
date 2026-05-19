@@ -61,6 +61,16 @@ export const buildEnv = () => {
     stripePaymentLinkStudio: process.env.STRIPE_PAYMENT_LINK_STUDIO ?? "",
     wirePodBaseUrl: process.env.WIREPOD_BASE_URL ?? "http://127.0.0.1:8080",
     wirePodTimeoutMs: Number(process.env.WIREPOD_TIMEOUT_MS ?? 4000),
+    photoEmailEnabled: process.env.PHOTO_EMAIL_ENABLED === "true",
+    photoEmailTo: process.env.PHOTO_EMAIL_TO ?? process.env.SUPPORT_EMAIL ?? "",
+    photoEmailFrom: process.env.PHOTO_EMAIL_FROM ?? process.env.SMTP_USER ?? process.env.SUPPORT_EMAIL ?? "",
+    photoEmailBatchSize: Number(process.env.PHOTO_EMAIL_BATCH_SIZE ?? 10),
+    photoEmailDeleteRemote: process.env.PHOTO_EMAIL_DELETE_REMOTE === "true",
+    smtpHost: process.env.SMTP_HOST ?? "",
+    smtpPort: Number(process.env.SMTP_PORT ?? 465),
+    smtpSecure: process.env.SMTP_SECURE !== "false",
+    smtpUser: process.env.SMTP_USER ?? "",
+    smtpPass: process.env.SMTP_PASS ?? "",
     dataFilePath:
       process.env.VECTOR_DATA_FILE ??
       path.resolve(serverRoot, "data/vector-control-hub.local.json")

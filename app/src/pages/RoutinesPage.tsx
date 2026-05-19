@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BotLabTilesCard } from "@/components/routines/BotLabTilesCard";
 import { RoutineAiDraftCard } from "@/components/routines/RoutineAiDraftCard";
 import { RoutineBlocksCard } from "@/components/routines/RoutineBlocksCard";
 import { RoutineBuilderCard } from "@/components/routines/RoutineBuilderCard";
@@ -108,6 +109,7 @@ export function RoutinesPage() {
           onToggle={toggleRoutine}
         />
         <RoutineBlocksCard />
+        <BotLabTilesCard />
       </div>
     </div>
   );

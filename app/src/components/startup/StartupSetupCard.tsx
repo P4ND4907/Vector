@@ -22,22 +22,22 @@ export function StartupSetupCard({
   onFinishSetup,
   onOpenPairingPortal
 }: StartupSetupCardProps) {
-  const title = setup?.initialSetupComplete ? "Local setup is ready" : "Local setup still needs one pass";
+  const title = setup?.initialSetupComplete ? "Local setup is ready" : "Local setup needs one tap";
   const description = setup
     ? setup.initialSetupComplete
-      ? `The local bridge is set to ${setup.connectionMode === "escape-pod" ? "Escape Pod" : "IP"} mode with ${setup.sttLanguage}.`
-      : "The app can apply the default local bridge setup for you: English (US) plus Escape Pod mode."
-    : "Once the local bridge answers, the app can check whether the one-time local setup is already done.";
+      ? `The local engine is set to ${setup.connectionMode === "escape-pod" ? "Escape Pod" : "IP"} mode with ${setup.sttLanguage}.`
+      : "The app can apply the default local setup for you."
+    : "Once the local engine answers, the app can check whether setup is already done.";
   const pairingHint = setup?.needsRobotPairing
-    ? "Vector still needs the one-time Bluetooth and Wi-Fi handshake. That part still happens through the local pairing portal, but the rest of the setup can stay here."
-    : "If no robot shows up after local setup finishes, open the pairing portal once to complete the first-time robot handshake.";
+    ? "Vector still needs the one-time Bluetooth and Wi-Fi handshake. The app will bring you back after that step."
+    : "If no robot shows up after setup finishes, open the pairing portal once to complete the first-time handshake.";
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Setup inside the app</CardTitle>
         <CardDescription>
-          The dashboard can now handle the easy local bridge defaults for you and only hands you off for the one robot-side pairing step.
+          Home handles the easy setup defaults and only hands you off for the one robot-side pairing step.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -56,8 +56,8 @@ export function StartupSetupCard({
             {loading
               ? "Finishing local setup..."
               : setup?.initialSetupComplete
-                ? "Re-apply local setup defaults"
-                : "Finish local setup automatically"}
+                ? "Re-apply defaults"
+                : "Finish setup"}
           </Button>
           <Button
             variant="ghost"
@@ -74,7 +74,7 @@ export function StartupSetupCard({
         </div>
         {mobileRuntimeNeedsBackend ? (
           <div className="rounded-2xl border border-dashed border-sky-400/20 bg-sky-400/6 p-4 text-sm text-muted-foreground">
-            On phones, save the desktop backend URL first in Settings. The pairing portal and local setup buttons only start working after the mobile shell can reach your LAN backend.
+            On phones, save the app backend URL first in Settings. Setup buttons work after this phone can reach your local app engine.
           </div>
         ) : null}
       </CardContent>

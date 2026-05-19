@@ -9,14 +9,14 @@ export function EngineStatusCard() {
     <Card>
       <CardHeader>
         <CardTitle>Engine status</CardTitle>
-        <CardDescription>Current provider health and compatibility note.</CardDescription>
+        <CardDescription>Quick check for the app connection layer.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <div>
-          Provider: <span className="font-semibold capitalize">{status?.provider ?? "unknown"}</span>
+          Mode: <span className="font-semibold capitalize">{status?.provider ?? "unknown"}</span>
         </div>
         <div>
-          Health: <span className="font-semibold">{status?.health.ok ? "Healthy" : "Needs attention"}</span>
+          Status: <span className="font-semibold">{status?.health.ok ? "Ready" : "Needs attention"}</span>
         </div>
         <p className="text-muted-foreground">{status?.health.note ?? status?.integration.note ?? "Checking engine..."}</p>
         {error ? <p className="text-destructive">{error}</p> : null}

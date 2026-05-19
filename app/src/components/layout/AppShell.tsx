@@ -67,6 +67,8 @@ export function AppShell() {
   const location = useLocation();
   const robot = useAppStore((state) => state.robot);
   const integration = useAppStore((state) => state.integration);
+  const settings = useAppStore((state) => state.settings);
+  const updateSettings = useAppStore((state) => state.updateSettings);
   const toasts = useAppStore((state) => state.toasts);
   const dismissToast = useAppStore((state) => state.dismissToast);
   const notifications = useAppStore((state) => state.notifications);
@@ -93,7 +95,15 @@ export function AppShell() {
           return;
         }
         const license = response.license;
-        setProActive(Boolean(license?.activated && license?.tier === "pro"));
+        const nextProActive = Boolean(license?.activated && license?.tier === "pro");
+        setProActive(nextProActive);
+
+        const nextPlanAccess = nextProActive ? "pro" : "free";
+        if (settings.planAccess !== nextPlanAccess) {
+          void updateSettings({
+            planAccess: nextPlanAccess
+          });
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -104,7 +114,7 @@ export function AppShell() {
     return () => {
       cancelled = true;
     };
-  }, [premiumOpen]);
+  }, [premiumOpen, settings.planAccess, updateSettings]);
 
   if (isStartupRoute) {
     return (
@@ -209,6 +219,9 @@ export function AppShell() {
         onActivated={() => {
           setPremiumOpen(false);
           setProActive(true);
+          void updateSettings({
+            planAccess: "pro"
+          });
         }}
       />
 

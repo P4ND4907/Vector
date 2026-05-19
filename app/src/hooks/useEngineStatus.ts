@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { getJson } from "@/services/apiClient";
 
 interface EngineHealthPayload {
-  provider: "embedded" | "wirepod" | "mock";
+  provider: "embedded" | "direct" | "wirepod" | "mock";
   health: {
     ok: boolean;
-    provider: "embedded" | "wirepod" | "mock";
+    provider: "embedded" | "direct" | "wirepod" | "mock";
     note: string;
   };
   integration: {

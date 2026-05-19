@@ -142,7 +142,7 @@ export const aiService = {
   async deleteLearnedCommand(phrase: string) {
     try {
       return await deleteJson<LearnedCommandsResponse>(
-        `/api/ai/commands/learned/${encodeURIComponent(phrase)}`,
+        `/api/engine/ai/commands/learned/${encodeURIComponent(phrase)}`,
         "The learned phrase could not be removed."
       );
     } catch (error) {

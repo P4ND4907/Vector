@@ -76,11 +76,11 @@ export function StartupConnectPage() {
     : "Offline";
   const localBrainDescription = integration.wirePodReachable
     ? integration.managedBridge.source === "bundled"
-      ? "The app is using its built-in local bridge."
-      : `${integration.bridgeLabel || "The local bridge"} answered the backend.`
+      ? "The app is using its built-in local engine."
+      : `${integration.bridgeLabel || "The local engine"} answered.`
     : integration.managedBridge.available
-      ? "The built-in bridge is available and will be started automatically."
-      : "The app cannot reach the local bridge yet.";
+      ? "The built-in engine is available and will be started automatically."
+      : "The app cannot reach the local engine yet.";
   const mobileRuntimeNeedsBackend = mobileRuntimeNeedsManualBackendUrl();
 
   const guide = useMemo(
@@ -120,12 +120,12 @@ export function StartupConnectPage() {
     integration.note ||
     guide.nextDetail;
   const completedChecklistCount = guide.checklist.filter((item) => item.done).length;
-  const setupTitle = wirePodSetup?.initialSetupComplete ? "Local setup is ready" : "Local setup still needs one pass";
+  const setupTitle = wirePodSetup?.initialSetupComplete ? "Local setup is ready" : "Local setup needs one tap";
   const setupDescription = wirePodSetup
     ? wirePodSetup.initialSetupComplete
-      ? `The local bridge is set to ${wirePodSetup.connectionMode === "escape-pod" ? "Escape Pod" : "IP"} mode with ${wirePodSetup.sttLanguage}.`
+      ? `The local engine is set to ${wirePodSetup.connectionMode === "escape-pod" ? "Escape Pod" : "IP"} mode with ${wirePodSetup.sttLanguage}.`
       : "The app can apply the default local setup for you: English (US) plus Escape Pod mode."
-    : "Once the local bridge answers, the app can check whether the one-time setup is already done.";
+    : "Once the local engine answers, the app can check whether the one-time setup is already done.";
   const pairingStillNeeded = Boolean(
     wirePodSetup?.needsRobotPairing ||
       (!(savedTarget || settings.robotSerial || integration.selectedSerial) &&
@@ -140,7 +140,7 @@ export function StartupConnectPage() {
   const pairingHint = pairingStillNeeded
     ? "Vector still needs the one-time Bluetooth and Wi-Fi handshake through the pairing portal."
     : bridgeRoutesUnresponsive
-      ? "The local bridge already knows a robot, but its SDK routes are timing out. Retry connection or restart the desktop service before pairing again."
+      ? "The app already knows a robot, but the live control route is timing out. Retry connection before pairing again."
       : "If no robot appears after local setup, open the pairing portal once to finish the first-time handshake.";
   const pairingPageHref = doctorGuide.stage === "pairing-needed" ? "/pairing?intent=new-robot" : "/pairing";
 
@@ -276,7 +276,7 @@ export function StartupConnectPage() {
         <Card className="overflow-hidden">
           <CardContent className="grid gap-5 p-4 sm:p-5 md:gap-6 md:p-8">
             <div className="space-y-3 md:space-y-4">
-              <div className="eyebrow">Startup connection</div>
+              <div className="eyebrow">Start here</div>
               <div className="space-y-2 md:space-y-3">
                 <h1 className="max-w-2xl text-3xl font-semibold tracking-tight md:text-4xl">{guide.headline}</h1>
                 <p className="max-w-2xl text-base text-muted-foreground">{guide.description}</p>
@@ -329,7 +329,7 @@ export function StartupConnectPage() {
 
             <div className="grid gap-3 md:grid-cols-3">
               <StartupOverviewCard
-                title="Local bridge"
+                title="Engine"
                 icon={<PlugZap className="h-4 w-4 text-primary" />}
                 value={localBrainValue}
                 description={localBrainDescription}
@@ -370,7 +370,7 @@ export function StartupConnectPage() {
                   </Button>
                   <Button variant="outline" size="lg" onClick={() => navigate("/setup/new-robot")}>
                     <Bot className="h-4 w-4" />
-                    Guided new robot setup
+                    Guided setup
                   </Button>
                   {guide.showDemoOption ? (
                     <Button variant="ghost" size="lg" onClick={handleEnableMock}>
@@ -415,10 +415,10 @@ export function StartupConnectPage() {
                   </Button>
                   <Button variant="outline" size="lg" onClick={() => navigate("/setup/new-robot")}>
                     <Bot className="h-4 w-4" />
-                    Guided new robot setup
+                    Guided setup
                   </Button>
                   <details className="min-w-[220px] rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-muted-foreground">
-                    <summary className="cursor-pointer list-none font-semibold text-foreground">More setup tools</summary>
+                    <summary className="cursor-pointer list-none font-semibold text-foreground">Advanced setup</summary>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {guide.showQuickRepair && healthState.id !== "bridge-down" && healthState.id !== "sdk-flapping" ? (
                         <Button variant="ghost" size="lg" onClick={quickRepair} disabled={supportState.status === "loading"}>
@@ -532,7 +532,7 @@ export function StartupConnectPage() {
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
                 <div className="text-sm font-semibold">Real robot mode</div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Use this when you want the app to control your actual Vector through the local bridge.
+                  Use this when you want the app to control your actual Vector.
                 </p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
@@ -621,7 +621,7 @@ export function StartupConnectPage() {
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
                 <div className="text-sm font-semibold">Real robot mode</div>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Use this when you want the app to control your actual Vector through the local bridge.
+                  Use this when you want the app to control your actual Vector.
                 </p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">

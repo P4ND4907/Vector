@@ -15,11 +15,11 @@ interface EngineDiscoverResponse {
 
 const steps = [
   "Welcome",
-  "Choose engine",
-  "Scan or manual input",
-  "Pair",
-  "Connect",
-  "Done"
+  "Pick mode",
+  "Find Vector",
+  "Save",
+  "Test",
+  "Ready"
 ] as const;
 
 export function OnboardingWizard() {
@@ -100,16 +100,23 @@ export function OnboardingWizard() {
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>Onboarding wizard</CardTitle>
+          <CardTitle>Guided setup</CardTitle>
           <CardDescription>Step {stepIndex + 1} of {steps.length}: {steps[stepIndex]}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {stepIndex === 0 ? <p>Welcome. This app will set up your robot with the local Engine flow.</p> : null}
+          {stepIndex === 0 ? (
+            <div className="rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] p-4">
+              <div className="text-lg font-semibold">Let’s get Vector ready.</div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                The app will scan, save your robot, test the connection, and then send you to Home.
+              </p>
+            </div>
+          ) : null}
 
           {stepIndex === 1 ? (
             <div className="space-y-2">
               <label htmlFor="provider" className="text-sm font-medium">
-                Engine provider
+                Setup mode
               </label>
               <select
                 id="provider"
@@ -117,8 +124,8 @@ export function OnboardingWizard() {
                 onChange={(event) => setProvider(event.target.value as "embedded" | "wirepod" | "mock")}
                 className="w-full rounded-md border border-[var(--surface-border)] bg-background px-3 py-2 text-sm"
               >
-                <option value="embedded">Embedded (recommended)</option>
-                <option value="wirepod">WirePod (legacy compatibility)</option>
+                <option value="embedded">Automatic (recommended)</option>
+                <option value="wirepod">Legacy compatibility</option>
                 <option value="mock">Mock (demo/testing)</option>
               </select>
             </div>
@@ -151,9 +158,9 @@ export function OnboardingWizard() {
             </div>
           ) : null}
 
-          {stepIndex === 3 ? <p>Pairing stores your robot details locally so reconnect is one tap.</p> : null}
-          {stepIndex === 4 ? <p>Connect now to verify control and status in-app.</p> : null}
-          {stepIndex === 5 ? <p>Done. Your robot is ready in the dashboard.</p> : null}
+          {stepIndex === 3 ? <p>Save Vector locally so reconnect is one tap next time.</p> : null}
+          {stepIndex === 4 ? <p>Now we test the live connection before showing the full app.</p> : null}
+          {stepIndex === 5 ? <p>Done. Vector is ready on Home.</p> : null}
 
           {note ? <p className="text-sm text-muted-foreground">{note}</p> : null}
 
@@ -165,10 +172,10 @@ export function OnboardingWizard() {
             ) : null}
             {stepIndex < steps.length - 1 ? (
               <Button onClick={() => void continueStep()} disabled={busy || !canProceed}>
-                {busy ? "Working..." : "Continue"}
+                {busy ? "Working..." : stepIndex === 0 ? "Start setup" : "Continue"}
               </Button>
             ) : (
-              <Button onClick={() => navigate("/dashboard")}>Open dashboard</Button>
+              <Button onClick={() => navigate("/dashboard")}>Open Home</Button>
             )}
           </div>
         </CardContent>

@@ -77,7 +77,7 @@ After a successful build, the Android artifacts land here:
 - Release bundle
   - `app/android/app/build/outputs/bundle/release/app-release.aab`
 - Version-stamped release bundle
-  - `app/android/app/build/outputs/bundle/release/Vector-Companion-0.1.39-260971915.aab`
+  - `app/android/app/build/outputs/bundle/release/Vector-Companion-0.1.40-261331515.aab`
 
 The debug APK is the easiest artifact for local device testing.
 
@@ -117,8 +117,8 @@ If you ever edit them by hand, the values still live in `app/android/app/build.g
 
 Current Android release values in this repo:
 
-- `versionCode 260971915`
-- `versionName "0.1.39"`
+- `versionCode 261331515`
+- `versionName "0.1.40"`
 
 If Play shows `Version code X has already been used`, only `versionCode` is too low; `versionName` can stay the same while testing, but we recommend bumping both together.
 
@@ -152,7 +152,7 @@ Once the release bundle is signed, use this file for Google Play internal testin
 
 - `app/android/app/build/outputs/bundle/release/app-release.aab`
 - or the version-stamped copy:
-  - `app/android/app/build/outputs/bundle/release/Vector-Companion-0.1.39-260971915.aab`
+  - `app/android/app/build/outputs/bundle/release/Vector-Companion-0.1.40-261331515.aab`
 
 Basic Play Console flow:
 
@@ -178,7 +178,7 @@ For direct sideload testing on your own Android device, use:
 6. Save the desktop or LAN backend URL manually.
 7. Return to the startup flow and connect to Vector.
 
-## What Is New In 0.1.39
+## What Is New In 0.1.40
 
 - added clearer trust-first health states across startup, dashboard, and diagnostics: bridge down, sdk flapping, robot asleep, or ready
 - made quick repair more watchdog-aware so bridge recovery follows the detected failure pattern instead of one generic path

@@ -30,23 +30,23 @@ export interface NavItem {
 }
 
 const primaryNavItems: NavItem[] = [
-  { to: "/dashboard", label: "Dashboard", mobileLabel: "Home", icon: Home, description: "Main status and fastest controls." },
-  { to: "/pairing", label: "Connect", icon: Bot, description: "Pair, switch, or reconnect a robot in Engine." },
-  { to: "/drive", label: "Controls", icon: Gamepad2, description: "Drive, dock, and move Vector." },
-  { to: "/ai", label: "AI", icon: BrainCircuit, description: "Typed commands, previews, and teaching." },
-  { to: "/camera", label: "Photos", icon: Camera, description: "Photos and camera tools." },
-  { to: "/routines", label: "Routines", icon: WandSparkles, description: "Saved routines and quick actions." },
-  { to: "/diagnostics", label: "Health", icon: Stethoscope, description: "Diagnostics and repair tools." },
-  { to: "/settings", label: "Settings", icon: Cog, description: "Engine, theme, and app setup." }
+  { to: "/dashboard", label: "Home", mobileLabel: "Home", icon: Home, description: "Status, next step, and the fastest actions." },
+  { to: "/pairing", label: "Connect", icon: Bot, description: "Find, save, or reconnect Vector." },
+  { to: "/drive", label: "Controls", icon: Gamepad2, description: "Drive, dock, wake, and move." },
+  { to: "/ai", label: "Ask", icon: BrainCircuit, description: "Type commands, teach phrases, and run smart actions." },
+  { to: "/camera", label: "Photos", icon: Camera, description: "View and sync Vector photos." },
+  { to: "/routines", label: "Routines", icon: WandSparkles, description: "Saved one-tap routines." },
+  { to: "/diagnostics", label: "Health", icon: Stethoscope, description: "Check and repair connection issues." },
+  { to: "/settings", label: "Settings", icon: Cog, description: "App preferences and advanced setup." }
 ];
 
 const secondaryNavItems: NavItem[] = [
-  { to: "/upgrade", label: "Upgrade", icon: BadgeDollarSign, description: "Plans, checkout hooks, and revenue setup." },
-  { to: "/speech", label: "Speech", icon: Mic, description: "Speech and voice tools." },
-  { to: "/animations", label: "Animate", icon: Sparkles, description: "Animations and face cues." },
-  { to: "/automation", label: "Roam", icon: Radar, description: "Autonomous behavior controls." }
+  { to: "/upgrade", label: "Pro", icon: BadgeDollarSign, description: "Upgrade and unlock Pro tools." },
+  { to: "/speech", label: "Speak", icon: Mic, description: "Typed speech and voice tools." },
+  { to: "/animations", label: "Animate", icon: Sparkles, description: "Face animations and reactions." },
+  { to: "/automation", label: "Roam", icon: Radar, description: "Autonomous play and exploration." }
   ,
-  { to: "/repair-tools", label: "Repair", icon: Wrench, description: "Engine repair and diagnostics actions." }
+  { to: "/repair-tools", label: "Repair", icon: Wrench, description: "Reset, scan, reconnect, and diagnose." }
 ];
 
 const mobilePrimaryNavItems: NavItem[] = [
@@ -75,8 +75,8 @@ export function DesktopNav() {
     <Card className="sticky top-4 overflow-hidden">
       <CardHeader>
         <div className="eyebrow">Vector Control Hub</div>
-        <CardTitle className="mt-2 text-2xl">Main dashboard</CardTitle>
-        <CardDescription>Keep the everyday controls up front and the extra tools tucked away.</CardDescription>
+        <CardTitle className="mt-2 text-2xl">Vector Companion</CardTitle>
+        <CardDescription>Daily controls first. Advanced tools stay tucked away.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
         {primaryNavItems.map((item) => {
@@ -163,10 +163,10 @@ export function MobileNav() {
             <div>
               <div className="eyebrow">More tools</div>
               <div className="mt-2 text-lg font-semibold">
-                {activeRoute?.label ? `${activeRoute.label} is open` : "Jump where you need"}
+                {activeRoute?.label ? `${activeRoute.label} is open` : "Pick a tool"}
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
-                Keep the dashboard and core controls on the main bar. Everything else lives here.
+                Photos, health, settings, and Pro tools live here so the main bar stays simple.
               </p>
             </div>
             <Button variant="ghost" size="sm" onClick={() => setMoreOpen(false)}>
@@ -250,33 +250,26 @@ export function MobilePageHeader() {
     <div className="xl:hidden">
       <div className="mb-3 flex items-center justify-between gap-3 rounded-3xl border border-[var(--surface-border)] bg-[var(--surface-soft)] px-4 py-3">
         <div className="min-w-0">
-          <div className="eyebrow">Mobile view</div>
+          <div className="eyebrow">Vector Companion</div>
           <div className="mt-1 truncate text-lg font-semibold">
             {route?.label ?? "Vector Companion"}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
-            {route?.description ?? "Keep the main dashboard one tap away while you move around the app."}
+            {route?.description ?? "One place to connect, control, and repair Vector."}
           </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
           {isDashboard ? (
-            <>
-              <Link to="/pairing">
-                <Button variant="outline" size="sm">
-                  Connect
-                </Button>
-              </Link>
-              <Link to="/settings">
-                <Button variant="outline" size="sm">
-                  Settings
-                </Button>
-              </Link>
-            </>
+            <Link to="/pairing">
+              <Button variant="outline" size="sm">
+                Connect
+              </Button>
+            </Link>
           ) : (
             <>
               <Link to="/dashboard">
-                <Button size="sm">Dashboard</Button>
+                <Button size="sm">Home</Button>
               </Link>
               {!isPairing ? (
                 <Link to="/pairing">

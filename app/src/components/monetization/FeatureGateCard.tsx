@@ -68,7 +68,7 @@ export function FeatureGateCard({
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => navigate("/upgrade")}>Open Upgrade</Button>
           <Button variant="outline" onClick={() => navigate("/dashboard")}>
-            Back to dashboard
+            Back to Home
           </Button>
         </div>
       </CardContent>
